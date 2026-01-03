@@ -22,6 +22,7 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: AT2HT9MT4G
+    ENABLE_HARDENED_RUNTIME: YES
 
 targets:
   QuickDown:
