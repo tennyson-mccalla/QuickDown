@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Down Logo Concepts</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f0f12;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-weight: 700;
+            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            display: flex;
+            gap: 3rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .card {
+            background: #1c1c1e;
+            border-radius: 24px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s ease;
+            width: 320px;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .label {
+            margin-top: 1.5rem;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: #8e8e93;
+        }
+
+        .icon-container {
+            width: 256px;
+            height: 256px;
+            background: #ffffff;
+            /* Show on white like an app icon */
+            border-radius: 54px;
+            /* App icon curvature */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Custom aesthetics for presentation */
+    </style>
+</head>
+
+<body>
+
+    <h1>Quick Down Concepts</h1>
+
+    <div class="container">
+
+        <!-- Variation 1: Organic Flow -->
+        <div class="card">
+            <div class="icon-container">
+                <svg width="192" height="192" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Gradient Defs -->
+                    <defs>
+                        <linearGradient id="grad1" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#00C6FF" />
+                            <stop offset="100%" stop-color="#0072FF" />
+                        </linearGradient>
+                        <linearGradient id="grad1_fade" x1="256" y1="0" x2="256" y2="300"
+                            gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#00C6FF" stop-opacity="0" />
+                            <stop offset="100%" stop-color="#0072FF" stop-opacity="0.8" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Vortices (Above/Behind) -->
+                    <!-- Left Swirl -->
+                    <path d="M180 120 C140 80, 160 20, 220 40" stroke="url(#grad1)" stroke-width="24"
+                        stroke-linecap="round" opacity="0.6" />
+                    <path d="M200 160 C160 120, 140 60, 180 20" stroke="url(#grad1)" stroke-width="16"
+                        stroke-linecap="round" opacity="0.4" />
+
+                    <!-- Right Swirl -->
+                    <path d="M332 120 C372 80, 352 20, 292 40" stroke="url(#grad1)" stroke-width="24"
+                        stroke-linecap="round" opacity="0.6" />
+                    <path d="M312 160 C352 120, 372 60, 332 20" stroke="url(#grad1)" stroke-width="16"
+                        stroke-linecap="round" opacity="0.4" />
+
+                    <!-- Main Arrow -->
+                    <path d="M256 120 V420" stroke="url(#grad1)" stroke-width="48" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    <path d="M136 300 L256 420 L376 300" stroke="url(#grad1)" stroke-width="48" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label">Organic Flow</div>
+        </div>
+
+        <!-- Variation 2: Speed Lines (Selected) -->
+        <div class="card" style="border: 2px solid #007AFF;">
+            <div class="icon-container">
+                <svg width="192" height="192" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="grad2" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#FF3B30" />
+                            <stop offset="100%" stop-color="#FF9500" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Speed lines trailing up -->
+                    <path d="M200 60 L200 200" stroke="url(#grad2)" stroke-width="20" stroke-linecap="round"
+                        opacity="0.4" />
+                    <path d="M312 40 L312 240" stroke="url(#grad2)" stroke-width="20" stroke-linecap="round"
+                        opacity="0.4" />
+                    <path d="M140 100 L140 180" stroke="url(#grad2)" stroke-width="16" stroke-linecap="round"
+                        opacity="0.3" />
+                    <path d="M372 80 L372 160" stroke="url(#grad2)" stroke-width="16" stroke-linecap="round"
+                        opacity="0.3" />
+
+                    <!-- Arrow Body -->
+                    <path d="M256 140 V440" stroke="url(#grad2)" stroke-width="56" stroke-linecap="round" />
+                    <path d="M126 310 L256 440 L386 310" stroke="url(#grad2)" stroke-width="56" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                </svg>
+            </div>
+            <div class="label" style="color: #007AFF;">Selected: High Velocity</div>
+        </div>
+
+        <!-- Variation 4: Manga Velocity (Experimental) -->
+        <div class="card">
+            <div class="icon-container">
+                <svg width="192" height="192" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="grad4" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#FF2D55" />
+                            <stop offset="100%" stop-color="#AF52DE" />
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Manga Style Speed Lines -->
+                    <!-- The trick is "hooks" and tapering curves -->
+
+                    <!-- Left Group -->
+                    <path d="M160 80 Q140 60, 180 120 Q190 140, 180 200" stroke="url(#grad4)" stroke-width="16"
+                        stroke-linecap="round" opacity="0.6" fill="none" />
+                    <path d="M120 140 Q100 130, 140 180" stroke="url(#grad4)" stroke-width="12" stroke-linecap="round"
+                        opacity="0.4" fill="none" />
+
+                    <!-- Right Group -->
+                    <path d="M352 80 Q372 60, 332 120 Q322 140, 332 200" stroke="url(#grad4)" stroke-width="16"
+                        stroke-linecap="round" opacity="0.6" fill="none" />
+                    <path d="M392 140 Q412 130, 372 180" stroke="url(#grad4)" stroke-width="12" stroke-linecap="round"
+                        opacity="0.4" fill="none" />
+
+                    <!-- Top Center swirls (clouds/impact) -->
+                    <path d="M220 60 Q256 20, 292 60" stroke="url(#grad4)" stroke-width="16" stroke-linecap="round"
+                        opacity="0.3" fill="none" />
+
+                    <!-- Arrow Body with slight animation curve feeling -->
+                    <path d="M256 120 V440" stroke="url(#grad4)" stroke-width="56" stroke-linecap="round" />
+                    <!-- Arrow Head -->
+                    <path d="M126 310 L256 440 L386 310" stroke="url(#grad4)" stroke-width="56" stroke-linecap="round"
+                        stroke-linejoin="round" />
+
+                    <!-- Action lines ON the arrow for speed -->
+                    <path d="M256 160 V260" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.3" />
+                </svg>
+            </div>
+            <div class="label">Manga Velocity</div>
+        </div>
+
+    </div>
+
+</body>
+
+</html>

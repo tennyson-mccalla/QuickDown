@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="64" y="64" width="896" height="896" rx="180" fill="white"/>
+
+    <g transform="translate(512 512) scale(1.1)">
+        <path d="M0 -200 V200" stroke="#007AFF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M-160 60 L0 240 L160 60" stroke="#007AFF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+
+        <path d="M-180 80 C-260 80, -340 -20, -320 -180" stroke="#007AFF" stroke-width="48" stroke-linecap="round"/>
+        <path d="M180 80 C260 80, 340 -20, 320 -180" stroke="#007AFF" stroke-width="48" stroke-linecap="round"/>
+    </g>
+
+    <defs>
+        <linearGradient id="paint0_linear" x1="512" y1="64" x2="512" y2="960" gradientUnits="userSpaceOnUse">
+            <stop stop-color="white" stop-opacity="0.5"/>
+            <stop offset="1" stop-color="#E5E5E5" stop-opacity="0.1"/>
+        </linearGradient>
+    </defs>
+    <rect x="64" y="64" width="896" height="896" rx="180" fill="url(#paint0_linear)" style="mix-blend-mode:overlay"/>
+
+</svg>

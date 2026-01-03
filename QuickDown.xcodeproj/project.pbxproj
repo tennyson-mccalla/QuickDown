@@ -11,6 +11,7 @@
 		17367452B188627F1497D46A /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		1EA056943427206238FF6ACE /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
 		2AD1E5193D883806588EF286 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */; };
+		3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F293BD209F9A11D94F4D7610 /* Assets.xcassets */; };
 		661CAAB90B7E7916DBFD44E6 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6ADE9DAA38CD212EDFD586F /* Quartz.framework */; };
 		96A95A6780F9A8A96E1B7027 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
 		AB3EDC36063DAFD293A6C73E /* MarkdownPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2DEAD1FA9D6A017C84D4CDC /* MarkdownPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -54,6 +55,7 @@
 		A2DEAD1FA9D6A017C84D4CDC /* MarkdownPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MarkdownPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6ADE9DAA38CD212EDFD586F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		BEFCAA34D0746ED67719C27A /* github-dark.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "github-dark.min.css"; sourceTree = "<group>"; };
+		F293BD209F9A11D94F4D7610 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FC7EC6A2FA563669168D545A /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = marked.min.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -73,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				7A9D560CAE541E7553AC9EE7 /* AppDelegate.swift */,
+				F293BD209F9A11D94F4D7610 /* Assets.xcassets */,
 				0937405529569A385C4ED4ED /* Info.plist */,
 			);
 			path = QuickDown;
@@ -162,6 +165,7 @@
 			buildConfigurationList = 8AE9AEF5E9EC4B2A6CDEE6E7 /* Build configuration list for PBXNativeTarget "QuickDown" */;
 			buildPhases = (
 				C1292FBCD9041BCA4CDC4B60 /* Sources */,
+				70561E42E5E0A43C844397A6 /* Resources */,
 				E31FE05695BF3CBA39F17AC6 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -216,6 +220,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		70561E42E5E0A43C844397A6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		761E0E665F79C119F7E13133 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;

@@ -1,0 +1,57 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 
+      macOS Icon Standard:
+      - 1024x1024 Canvas
+      - Rounded Rectangle Background (Squircle)
+      - Content centered with standard margins
+    -->
+
+    <defs>
+        <!-- Background Gradient (Subtle depth) -->
+        <linearGradient id="bg_gradient" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#FFFFFF"/>
+            <stop offset="100%" stop-color="#F2F2F7"/>
+        </linearGradient>
+
+        <!-- Icon Gradient (High Velocity - Orange/Red) -->
+        <linearGradient id="arrow_gradient" x1="512" y1="0" x2="512" y2="1024" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#FF3B30"/>
+            <stop offset="100%" stop-color="#FF9500"/>
+        </linearGradient>
+        
+        <!-- Drop Shadow for the main shape to give it depth on the tile -->
+        <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="20"/>
+            <feOffset dx="0" dy="20" result="offsetblur"/>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"/>
+            </feComponentTransfer>
+            <feMerge> 
+                <feMergeNode/>
+                <feMergeNode in="SourceGraphic"/> 
+            </feMerge>
+        </filter>
+    </defs>
+
+    <!-- Background Squircle -->
+    <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg_gradient)"/>
+    
+    <!-- Icon Content (Scaled x2 from 512 original) -->
+    <g transform="translate(0, 0)" filter="url(#dropShadow)">
+        <!-- Speed lines trailing up -->
+        <!-- Scaled coordinates: Original * 2 -->
+        <!-- M200 60 -> M400 120 -->
+        <path d="M400 120 L400 400" stroke="url(#arrow_gradient)" stroke-width="40" stroke-linecap="round" opacity="0.4"/>
+        <path d="M624 80 L624 480" stroke="url(#arrow_gradient)" stroke-width="40" stroke-linecap="round" opacity="0.4"/>
+        <path d="M280 200 L280 360" stroke="url(#arrow_gradient)" stroke-width="32" stroke-linecap="round" opacity="0.3"/>
+        <path d="M744 160 L744 320" stroke="url(#arrow_gradient)" stroke-width="32" stroke-linecap="round" opacity="0.3"/>
+
+        <!-- Arrow Body -->
+        <!-- M256 140 -> M512 280 -->
+        <path d="M512 280 V880" stroke="url(#arrow_gradient)" stroke-width="112" stroke-linecap="round" />
+        <!-- Arrow Head -->
+        <!-- M126 310 -> M252 620, M256 440 -> M512 880, M386 310 -> M772 620 -->
+        <path d="M252 620 L512 880 L772 620" stroke="url(#arrow_gradient)" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+</svg>
