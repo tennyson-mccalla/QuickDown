@@ -11,12 +11,18 @@
 		17367452B188627F1497D46A /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		1EA056943427206238FF6ACE /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
 		2AD1E5193D883806588EF286 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */; };
+		326886DF4A9FC17336470B17 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
+		35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F293BD209F9A11D94F4D7610 /* Assets.xcassets */; };
 		4247819D278745881AB13EEC /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 11B81B729BA9DC98F47C9BB0 /* WebKit.framework */; };
+		5EB936304DB630CA70016230 /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
+		65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 43D2320AF1EABCEC69B3C66C /* highlight.min.js */; };
 		661CAAB90B7E7916DBFD44E6 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6ADE9DAA38CD212EDFD586F /* Quartz.framework */; };
 		96A95A6780F9A8A96E1B7027 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
 		AB3EDC36063DAFD293A6C73E /* MarkdownPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2DEAD1FA9D6A017C84D4CDC /* MarkdownPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BA2A069C344145EF59AEB287 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7B5F7956CF94351A999216 /* main.swift */; };
 		C1227E6D05DF53FE872281D1 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A9D560CAE541E7553AC9EE7 /* AppDelegate.swift */; };
+		C9A5C1501E11DC17BD7929EA /* github-dark.min.css in Resources */ = {isa = PBXBuildFile; fileRef = BEFCAA34D0746ED67719C27A /* github-dark.min.css */; };
 		ED01804B237879A9F323E414 /* github-dark.min.css in Resources */ = {isa = PBXBuildFile; fileRef = BEFCAA34D0746ED67719C27A /* github-dark.min.css */; };
 /* End PBXBuildFile section */
 
@@ -53,6 +59,7 @@
 		5277C86A48E697618FC7FB67 /* styles.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = styles.css; sourceTree = "<group>"; };
 		76EEAC00E8DF311B0B714DC3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7A9D560CAE541E7553AC9EE7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		8E7B5F7956CF94351A999216 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		A1A6F4D69E914953460D626E /* github.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = github.min.css; sourceTree = "<group>"; };
 		A2DEAD1FA9D6A017C84D4CDC /* MarkdownPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = MarkdownPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6ADE9DAA38CD212EDFD586F /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
@@ -80,6 +87,7 @@
 				7A9D560CAE541E7553AC9EE7 /* AppDelegate.swift */,
 				F293BD209F9A11D94F4D7610 /* Assets.xcassets */,
 				0937405529569A385C4ED4ED /* Info.plist */,
+				8E7B5F7956CF94351A999216 /* main.swift */,
 			);
 			path = QuickDown;
 			sourceTree = "<group>";
@@ -229,6 +237,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */,
+				C9A5C1501E11DC17BD7929EA /* github-dark.min.css in Resources */,
+				35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */,
+				65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */,
+				5EB936304DB630CA70016230 /* marked.min.js in Resources */,
+				326886DF4A9FC17336470B17 /* styles.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -260,6 +273,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1227E6D05DF53FE872281D1 /* AppDelegate.swift in Sources */,
+				BA2A069C344145EF59AEB287 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

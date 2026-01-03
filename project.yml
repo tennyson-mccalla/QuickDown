@@ -32,6 +32,8 @@ targets:
       - path: QuickDown
         excludes:
           - "*.entitlements"
+      - path: MarkdownPreview/Resources
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tennyson.QuickDown
