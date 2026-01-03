@@ -57,6 +57,7 @@ targets:
         buildPhase: resources
     dependencies:
       - sdk: Quartz.framework
+      - sdk: WebKit.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tennyson.QuickDown.MarkdownPreview

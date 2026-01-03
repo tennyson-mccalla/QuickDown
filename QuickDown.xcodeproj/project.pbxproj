@@ -12,6 +12,7 @@
 		1EA056943427206238FF6ACE /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
 		2AD1E5193D883806588EF286 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */; };
 		3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F293BD209F9A11D94F4D7610 /* Assets.xcassets */; };
+		4247819D278745881AB13EEC /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 11B81B729BA9DC98F47C9BB0 /* WebKit.framework */; };
 		661CAAB90B7E7916DBFD44E6 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6ADE9DAA38CD212EDFD586F /* Quartz.framework */; };
 		96A95A6780F9A8A96E1B7027 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
 		AB3EDC36063DAFD293A6C73E /* MarkdownPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2DEAD1FA9D6A017C84D4CDC /* MarkdownPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -46,6 +47,7 @@
 /* Begin PBXFileReference section */
 		0937405529569A385C4ED4ED /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewViewController.swift; sourceTree = "<group>"; };
+		11B81B729BA9DC98F47C9BB0 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		43D2320AF1EABCEC69B3C66C /* highlight.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = highlight.min.js; sourceTree = "<group>"; };
 		5205E5AAF4CA3ADF75722172 /* QuickDown.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuickDown.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5277C86A48E697618FC7FB67 /* styles.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = styles.css; sourceTree = "<group>"; };
@@ -65,6 +67,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				661CAAB90B7E7916DBFD44E6 /* Quartz.framework in Frameworks */,
+				4247819D278745881AB13EEC /* WebKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				A6ADE9DAA38CD212EDFD586F /* Quartz.framework */,
+				11B81B729BA9DC98F47C9BB0 /* WebKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

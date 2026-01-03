@@ -23,17 +23,40 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         ])
     }
 
-    // MARK: - QLPreviewingController
-
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         do {
-            let markdownContent = try String(contentsOf: url, encoding: .utf8)
+            let markdownContent = try readFileWithFallbackEncoding(url: url)
             let html = generateHTML(markdown: markdownContent)
             webView.loadHTMLString(html, baseURL: nil)
             handler(nil)
         } catch {
             handler(error)
         }
+    }
+
+    private func readFileWithFallbackEncoding(url: URL) throws -> String {
+        // Try UTF-8 first (most common)
+        if let content = try? String(contentsOf: url, encoding: .utf8) {
+            return content
+        }
+        // Try Windows Latin-1 (common for files with ® and other extended ASCII)
+        if let content = try? String(contentsOf: url, encoding: .windowsCP1252) {
+            return content
+        }
+        // Try ISO Latin-1
+        if let content = try? String(contentsOf: url, encoding: .isoLatin1) {
+            return content
+        }
+        // Last resort: read as data and try to detect/convert
+        let data = try Data(contentsOf: url)
+        if let content = String(data: data, encoding: .utf8) {
+            return content
+        }
+        if let content = String(data: data, encoding: .windowsCP1252) {
+            return content
+        }
+        // Final fallback with lossy conversion
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func loadResource(_ name: String, ext: String) -> String {
