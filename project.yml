@@ -1,0 +1,65 @@
+name: QuickDown
+options:
+  bundleIdPrefix: com.tennyson
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+schemes:
+  QuickDown:
+    build:
+      targets:
+        QuickDown: all
+    run:
+      config: Debug
+      executable: QuickDown
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: AT2HT9MT4G
+
+targets:
+  QuickDown:
+    type: application
+    platform: macOS
+    sources:
+      - path: QuickDown
+        excludes:
+          - "*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tennyson.QuickDown
+        INFOPLIST_FILE: QuickDown/Info.plist
+        CODE_SIGN_ENTITLEMENTS: QuickDown/QuickDown.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        COMBINE_HIDPI_IMAGES: true
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - target: MarkdownPreview
+
+  MarkdownPreview:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: MarkdownPreview
+        excludes:
+          - "*.entitlements"
+          - Resources
+      - path: MarkdownPreview/Resources
+        buildPhase: resources
+    dependencies:
+      - sdk: Quartz.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tennyson.QuickDown.MarkdownPreview
+        INFOPLIST_FILE: MarkdownPreview/Info.plist
+        CODE_SIGN_ENTITLEMENTS: MarkdownPreview/MarkdownPreview.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        SKIP_INSTALL: true
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
