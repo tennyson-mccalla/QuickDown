@@ -154,6 +154,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    func exportHTML() {
+        guard let currentFileURL = currentFileURL else {
+            showError("No file loaded. Open a Markdown file first.")
+            return
+        }
+
+        do {
+            let content = try readFileWithFallbackEncoding(url: currentFileURL)
+            let html = generateHTML(markdown: content)
+
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [.html]
+            savePanel.nameFieldStringValue = currentFileURL.deletingPathExtension().lastPathComponent + ".html"
+
+            savePanel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = savePanel.url else { return }
+
+                do {
+                    try html.write(to: url, atomically: true, encoding: .utf8)
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } catch {
+                    self.showError("Failed to save HTML: \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            showError("Failed to read file: \(error.localizedDescription)")
+        }
+    }
+
     private func showError(_ message: String) {
         let alert = NSAlert()
         alert.messageText = "Error"
@@ -264,6 +293,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         fileMenu.addItem(withTitle: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "o")
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(withTitle: "Export as PDF…", action: #selector(exportPDFAction(_:)), keyEquivalent: "e")
+        fileMenu.addItem(withTitle: "Export as HTML…", action: #selector(exportHTMLAction(_:)), keyEquivalent: "E")
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileMenuItem.submenu = fileMenu
@@ -311,10 +341,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         exportPDF()
     }
 
+    @objc func exportHTMLAction(_ sender: Any?) {
+        exportHTML()
+    }
+
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(exportPDFAction(_:)) {
+        if menuItem.action == #selector(exportPDFAction(_:)) ||
+           menuItem.action == #selector(exportHTMLAction(_:)) {
             return currentFileURL != nil
         }
         return true
