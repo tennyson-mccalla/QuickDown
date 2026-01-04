@@ -7,6 +7,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var webView: WKWebView!
     var dropZoneLabel: NSTextField!
     var currentFileURL: URL?
+    private var fileWatcher: DispatchSourceFileSystemObject?
+    private var fileDescriptor: Int32 = -1
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindow()
@@ -24,6 +26,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             window?.makeKeyAndOrderFront(nil)
         }
         return true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stopWatchingFile()
     }
 
     // MARK: - Window Setup
@@ -81,6 +87,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - File Handling
 
     func openFile(_ url: URL) {
+        // Stop watching the previous file
+        stopWatchingFile()
+
         currentFileURL = url
         window.title = "QuickDown — \(url.lastPathComponent)"
 
@@ -90,8 +99,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
             webView.isHidden = false
             dropZoneLabel.isHidden = true
+
+            // Start watching for changes
+            startWatchingFile(url)
         } catch {
             showError("Failed to open file: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Live Reload
+
+    private func startWatchingFile(_ url: URL) {
+        fileDescriptor = open(url.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else { return }
+
+        fileWatcher = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .extend, .rename, .delete],
+            queue: .main
+        )
+
+        fileWatcher?.setEventHandler { [weak self] in
+            self?.reloadCurrentFile()
+        }
+
+        fileWatcher?.setCancelHandler { [weak self] in
+            if let fd = self?.fileDescriptor, fd >= 0 {
+                close(fd)
+                self?.fileDescriptor = -1
+            }
+        }
+
+        fileWatcher?.resume()
+    }
+
+    private func stopWatchingFile() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+    }
+
+    private func reloadCurrentFile() {
+        guard let url = currentFileURL else { return }
+
+        // Save scroll position before reload
+        webView.evaluateJavaScript("window.scrollY") { [weak self] (scrollY, _) in
+            guard let self = self else { return }
+
+            do {
+                let content = try self.readFileWithFallbackEncoding(url: url)
+                let html = self.generateHTML(markdown: content)
+                self.webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+
+                // Restore scroll position after content loads
+                if let scrollPosition = scrollY as? Double {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.webView.evaluateJavaScript("window.scrollTo(0, \(scrollPosition))")
+                    }
+                }
+            } catch {
+                // Silently fail on reload errors - file might be mid-save
+            }
         }
     }
 
