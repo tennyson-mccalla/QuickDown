@@ -1,12 +1,33 @@
 import Cocoa
 import WebKit
 
+enum Theme: String, CaseIterable {
+    case system = "System"
+    case light = "Light"
+    case dark = "Dark"
+    case sepia = "Sepia"
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var window: NSWindow!
     var webView: WKWebView!
     var dropZoneLabel: NSTextField!
     var currentFileURL: URL?
+
+    private let themeKey = "SelectedTheme"
+    private var currentTheme: Theme {
+        get {
+            if let value = UserDefaults.standard.string(forKey: themeKey),
+               let theme = Theme(rawValue: value) {
+                return theme
+            }
+            return .system
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: themeKey)
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindow()
@@ -228,14 +249,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
 
+        let themeStyles = generateThemeStyles(
+            githubCSS: githubCSS,
+            githubDarkCSS: githubDarkCSS
+        )
+
         return """
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
-            <style media="(prefers-color-scheme: light)">\(githubCSS)</style>
-            <style media="(prefers-color-scheme: dark)">\(githubDarkCSS)</style>
+            \(themeStyles)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
         </head>
@@ -261,6 +286,80 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         </body>
         </html>
         """
+    }
+
+    private func generateThemeStyles(githubCSS: String, githubDarkCSS: String) -> String {
+        switch currentTheme {
+        case .system:
+            return """
+            <style media="(prefers-color-scheme: light)">\(githubCSS)</style>
+            <style media="(prefers-color-scheme: dark)">\(githubDarkCSS)</style>
+            """
+        case .light:
+            return """
+            <meta name="color-scheme" content="light only">
+            <style>
+            :root { color-scheme: light only; }
+            \(githubCSS)
+            body, #content {
+                background-color: #ffffff !important;
+                color: #1f2328 !important;
+            }
+            table, th, td, tr {
+                background-color: #ffffff !important;
+                color: #1f2328 !important;
+                border-color: #d0d7de !important;
+            }
+            th {
+                background-color: #f6f8fa !important;
+            }
+            tr:nth-child(2n) {
+                background-color: #f6f8fa !important;
+            }
+            pre, code {
+                background-color: #f6f8fa !important;
+                color: #1f2328 !important;
+            }
+            </style>
+            """
+        case .dark:
+            return """
+            <meta name="color-scheme" content="dark only">
+            <style>
+            :root { color-scheme: dark only; }
+            \(githubDarkCSS)
+            </style>
+            """
+        case .sepia:
+            return """
+            <meta name="color-scheme" content="light only">
+            <style>
+            :root { color-scheme: light only; }
+            \(githubCSS)
+            body, #content {
+                background-color: #f4ecd8 !important;
+                color: #5b4636 !important;
+            }
+            table, th, td, tr {
+                background-color: #f4ecd8 !important;
+                color: #5b4636 !important;
+                border-color: #d4c4a8 !important;
+            }
+            th {
+                background-color: #e8dcc8 !important;
+            }
+            tr:nth-child(2n) {
+                background-color: #ebe3d0 !important;
+            }
+            pre, code {
+                background-color: #e8dcc8 !important;
+                color: #5b4636 !important;
+            }
+            a { color: #8b4513 !important; }
+            h1, h2, h3, h4, h5, h6 { color: #5b4636 !important; }
+            </style>
+            """
+        }
     }
 
     private func escapeForJavaScript(_ string: String) -> String {
@@ -307,6 +406,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
+        // View menu
+        let viewMenuItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "View")
+
+        // Theme submenu
+        let themeMenuItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        let themeMenu = NSMenu(title: "Theme")
+        for theme in Theme.allCases {
+            let item = NSMenuItem(
+                title: theme.rawValue,
+                action: #selector(selectTheme(_:)),
+                keyEquivalent: ""
+            )
+            item.representedObject = theme
+            item.state = (theme == currentTheme) ? .on : .off
+            themeMenu.addItem(item)
+        }
+        themeMenuItem.submenu = themeMenu
+        viewMenu.addItem(themeMenuItem)
+
+        viewMenuItem.submenu = viewMenu
+        mainMenu.addItem(viewMenuItem)
+
         // Window menu
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
@@ -343,6 +465,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func exportHTMLAction(_ sender: Any?) {
         exportHTML()
+    }
+
+    @objc func selectTheme(_ sender: NSMenuItem) {
+        guard let theme = sender.representedObject as? Theme else { return }
+        currentTheme = theme
+
+        // Update menu checkmarks
+        if let themeMenu = sender.menu {
+            for item in themeMenu.items {
+                item.state = (item.representedObject as? Theme == theme) ? .on : .off
+            }
+        }
+
+        // Reload current file with new theme
+        if let url = currentFileURL {
+            do {
+                let content = try readFileWithFallbackEncoding(url: url)
+                let html = generateHTML(markdown: content)
+                webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+            } catch {
+                // Ignore reload errors
+            }
+        }
     }
 
     // MARK: - Menu Validation
