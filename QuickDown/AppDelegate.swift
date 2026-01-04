@@ -8,6 +8,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var dropZoneLabel: NSTextField!
     var currentFileURL: URL?
 
+    private var recentFilesMenu: NSMenu!
+    private let recentFilesKey = "RecentFiles"
+    private let maxRecentFiles = 10
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindow()
         setupMenu()
@@ -90,9 +94,91 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
             webView.isHidden = false
             dropZoneLabel.isHidden = true
+
+            // Add to recent files
+            addToRecentFiles(url)
         } catch {
             showError("Failed to open file: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Recent Files
+
+    private func addToRecentFiles(_ url: URL) {
+        var recentFiles = getRecentFiles()
+
+        // Remove if already exists (will re-add at front)
+        recentFiles.removeAll { $0.path == url.path }
+
+        // Add to front
+        recentFiles.insert(url, at: 0)
+
+        // Limit count
+        if recentFiles.count > maxRecentFiles {
+            recentFiles = Array(recentFiles.prefix(maxRecentFiles))
+        }
+
+        // Save as array of path strings
+        let paths = recentFiles.map { $0.path }
+        UserDefaults.standard.set(paths, forKey: recentFilesKey)
+
+        // Update menu
+        updateRecentFilesMenu()
+    }
+
+    private func getRecentFiles() -> [URL] {
+        guard let paths = UserDefaults.standard.stringArray(forKey: recentFilesKey) else {
+            return []
+        }
+        return paths.compactMap { URL(fileURLWithPath: $0) }
+    }
+
+    private func updateRecentFilesMenu() {
+        recentFilesMenu.removeAllItems()
+
+        let recentFiles = getRecentFiles()
+
+        if recentFiles.isEmpty {
+            let emptyItem = NSMenuItem(title: "No Recent Files", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            recentFilesMenu.addItem(emptyItem)
+        } else {
+            for (index, url) in recentFiles.enumerated() {
+                let item = NSMenuItem(
+                    title: url.lastPathComponent,
+                    action: #selector(openRecentFile(_:)),
+                    keyEquivalent: index < 9 ? "\(index + 1)" : ""
+                )
+                item.keyEquivalentModifierMask = index < 9 ? [.command, .shift] : []
+                item.representedObject = url
+                item.toolTip = url.path
+                recentFilesMenu.addItem(item)
+            }
+
+            recentFilesMenu.addItem(NSMenuItem.separator())
+            recentFilesMenu.addItem(withTitle: "Clear Recent Files", action: #selector(clearRecentFiles(_:)), keyEquivalent: "")
+        }
+    }
+
+    @objc private func openRecentFile(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+
+        if FileManager.default.fileExists(atPath: url.path) {
+            openFile(url)
+        } else {
+            showError("File not found: \(url.lastPathComponent)")
+            // Remove from recents
+            var recentFiles = getRecentFiles()
+            recentFiles.removeAll { $0.path == url.path }
+            let paths = recentFiles.map { $0.path }
+            UserDefaults.standard.set(paths, forKey: recentFilesKey)
+            updateRecentFilesMenu()
+        }
+    }
+
+    @objc private func clearRecentFiles(_ sender: Any?) {
+        UserDefaults.standard.removeObject(forKey: recentFilesKey)
+        updateRecentFilesMenu()
     }
 
     private func readFileWithFallbackEncoding(url: URL) throws -> String {
@@ -291,6 +377,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Open…", action: #selector(openDocument(_:)), keyEquivalent: "o")
+
+        // Open Recent submenu
+        let recentMenuItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        recentFilesMenu = NSMenu(title: "Open Recent")
+        recentMenuItem.submenu = recentFilesMenu
+        fileMenu.addItem(recentMenuItem)
+        updateRecentFilesMenu()
+
         fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(withTitle: "Export as PDF…", action: #selector(exportPDFAction(_:)), keyEquivalent: "e")
         fileMenu.addItem(withTitle: "Export as HTML…", action: #selector(exportHTMLAction(_:)), keyEquivalent: "E")
