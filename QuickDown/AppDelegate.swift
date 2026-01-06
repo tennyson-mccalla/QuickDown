@@ -8,6 +8,12 @@ enum Theme: String, CaseIterable {
     case sepia = "Sepia"
 }
 
+struct TOCItem {
+    let level: Int
+    let title: String
+    let id: String
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var window: NSWindow!
@@ -20,6 +26,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
     private let maxRecentFiles = 10
+
+    // TOC sidebar
+    private var splitView: NSSplitView!
+    private var tocScrollView: NSScrollView!
+    private var tocTableView: NSTableView!
+    private var tocItems: [TOCItem] = []
+    private var isSidebarVisible = false
+    private let sidebarVisibleKey = "SidebarVisible"
 
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
@@ -61,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func setupWindow() {
         window = NSWindow(
-            contentRect: NSRect(x: 100, y: 100, width: 800, height: 600),
+            contentRect: NSRect(x: 100, y: 100, width: 900, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -69,10 +83,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window.title = "QuickDown"
         window.center()
         window.setFrameAutosaveName("MainWindow")
-        window.minSize = NSSize(width: 400, height: 300)
+        window.minSize = NSSize(width: 500, height: 300)
 
-        // Create drop view as content
-        let dropView = DropView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        // Create split view
+        splitView = NSSplitView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        splitView.autoresizingMask = [.width, .height]
+
+        // Create TOC sidebar
+        setupTOCSidebar()
+
+        // Create drop view for main content
+        let dropView = DropView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
         dropView.autoresizingMask = [.width, .height]
         dropView.onFileDrop = { [weak self] url in
             self?.openFile(url)
@@ -92,7 +115,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         webView = customWebView
         dropView.addSubview(webView)
 
-
         // Create drop zone label
         dropZoneLabel = NSTextField(labelWithString: "Drop a Markdown file here\nor use File → Open")
         dropZoneLabel.alignment = .center
@@ -106,7 +128,61 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             dropZoneLabel.centerYAnchor.constraint(equalTo: dropView.centerYAnchor)
         ])
 
-        window.contentView = dropView
+        // Add views to split view
+        splitView.addArrangedSubview(tocScrollView)
+        splitView.addArrangedSubview(dropView)
+
+        // Set initial sidebar state
+        isSidebarVisible = UserDefaults.standard.bool(forKey: sidebarVisibleKey)
+        splitView.setPosition(isSidebarVisible ? 200 : 0, ofDividerAt: 0)
+        tocScrollView.isHidden = !isSidebarVisible
+
+        window.contentView = splitView
+    }
+
+    private func setupTOCSidebar() {
+        // Create table view for TOC
+        tocTableView = NSTableView()
+        tocTableView.headerView = nil
+        tocTableView.rowHeight = 24
+        tocTableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tocTableView.backgroundColor = .clear
+        tocTableView.selectionHighlightStyle = .regular
+        tocTableView.dataSource = self
+        tocTableView.delegate = self
+        tocTableView.target = self
+        tocTableView.action = #selector(tocItemClicked)
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TOC"))
+        column.title = "Table of Contents"
+        tocTableView.addTableColumn(column)
+
+        // Create scroll view
+        tocScrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 600))
+        tocScrollView.documentView = tocTableView
+        tocScrollView.hasVerticalScroller = true
+        tocScrollView.autohidesScrollers = true
+        tocScrollView.borderType = .noBorder
+        tocScrollView.drawsBackground = false
+    }
+
+    @objc private func tocItemClicked() {
+        let row = tocTableView.clickedRow
+        guard row >= 0 && row < tocItems.count else { return }
+        let item = tocItems[row]
+        webView.evaluateJavaScript("document.getElementById('\(item.id)')?.scrollIntoView({behavior: 'smooth'})")
+    }
+
+    @objc func toggleSidebar(_ sender: Any?) {
+        isSidebarVisible.toggle()
+        UserDefaults.standard.set(isSidebarVisible, forKey: sidebarVisibleKey)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.allowsImplicitAnimation = true
+            tocScrollView.isHidden = !isSidebarVisible
+            splitView.setPosition(isSidebarVisible ? 200 : 0, ofDividerAt: 0)
+        }
     }
 
     // MARK: - File Handling
@@ -120,6 +196,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         do {
             let content = try readFileWithFallbackEncoding(url: url)
+
+            // Parse TOC from markdown
+            tocItems = parseTOC(from: content)
+            tocTableView.reloadData()
+
             let html = generateHTML(markdown: content)
             webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
             webView.isHidden = false
@@ -133,6 +214,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         } catch {
             showError("Failed to open file: \(error.localizedDescription)")
         }
+    }
+
+    private func parseTOC(from markdown: String) -> [TOCItem] {
+        var items: [TOCItem] = []
+        let lines = markdown.components(separatedBy: .newlines)
+        var inCodeBlock = false
+
+        for line in lines {
+            // Track code blocks to avoid parsing headings inside them
+            if line.hasPrefix("```") {
+                inCodeBlock.toggle()
+                continue
+            }
+            if inCodeBlock { continue }
+
+            // Match ATX-style headings (# Heading)
+            if let match = line.range(of: "^(#{1,6})\\s+(.+)$", options: .regularExpression) {
+                let matchedLine = String(line[match])
+                let hashCount = matchedLine.prefix(while: { $0 == "#" }).count
+                let title = matchedLine.dropFirst(hashCount).trimmingCharacters(in: .whitespaces)
+                let id = generateHeadingId(title)
+                items.append(TOCItem(level: hashCount, title: title, id: id))
+            }
+        }
+        return items
+    }
+
+    private func generateHeadingId(_ title: String) -> String {
+        return title
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "[^a-z0-9-]", with: "", options: .regularExpression)
     }
 
     // MARK: - Live Reload
@@ -175,6 +288,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
             do {
                 let content = try self.readFileWithFallbackEncoding(url: url)
+
+                // Update TOC
+                self.tocItems = self.parseTOC(from: content)
+                self.tocTableView.reloadData()
+
                 let html = self.generateHTML(markdown: content)
                 self.webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
 
@@ -504,6 +622,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     ],
                     throwOnError: false
                 });
+
+                // Add IDs to headings for TOC navigation
+                document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function(heading) {
+                    var id = heading.textContent
+                        .toLowerCase()
+                        .replace(/\\s+/g, '-')
+                        .replace(/[^a-z0-9-]/g, '');
+                    heading.id = id;
+                });
             </script>
         </body>
         </html>
@@ -640,6 +767,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let viewMenuItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
 
+        // Toggle Sidebar
+        let sidebarItem = NSMenuItem(
+            title: "Toggle Sidebar",
+            action: #selector(toggleSidebar(_:)),
+            keyEquivalent: "s"
+        )
+        sidebarItem.target = self
+        sidebarItem.keyEquivalentModifierMask = [.command, .control]
+        viewMenu.addItem(sidebarItem)
+        viewMenu.addItem(NSMenuItem.separator())
+
         // Theme submenu
         let themeMenuItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
         let themeMenu = NSMenu(title: "Theme")
@@ -735,6 +873,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         openFile(url)
+    }
+}
+
+// MARK: - NSTableViewDataSource & NSTableViewDelegate
+
+extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        return tocItems.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let item = tocItems[row]
+
+        let cell = NSTextField(labelWithString: item.title)
+        cell.lineBreakMode = .byTruncatingTail
+        cell.font = NSFont.systemFont(ofSize: 12)
+
+        // Indent based on heading level
+        let indent = CGFloat((item.level - 1) * 12)
+        cell.frame.origin.x = indent
+
+        let container = NSView()
+        container.addSubview(cell)
+        cell.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            cell.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8 + indent),
+            cell.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
+            cell.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
+        return container
     }
 }
 
