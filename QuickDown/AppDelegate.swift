@@ -452,7 +452,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             <style>\(stylesCSS)</style>
             \(themeStyles)
             <style>
-                .mermaid { text-align: center; }
+                .mermaid { text-align: center; background: transparent; }
+                .mermaid svg { max-width: 100%; }
             </style>
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
@@ -463,17 +464,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             <script>
                 mermaid.initialize({ startOnLoad: false, theme: 'default' });
 
-                const renderer = new marked.Renderer();
-                const originalCodeRenderer = renderer.code.bind(renderer);
-                renderer.code = function(code, language, isEscaped) {
-                    if (language === 'mermaid') {
-                        return '<pre class="mermaid">' + code + '</pre>';
-                    }
-                    return originalCodeRenderer(code, language, isEscaped);
-                };
-
                 marked.setOptions({
-                    renderer: renderer,
                     highlight: function(code, lang) {
                         if (lang === 'mermaid') return code;
                         if (lang && hljs.getLanguage(lang)) {
@@ -489,6 +480,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
+
+                // Post-process: convert mermaid code blocks to mermaid divs
+                document.querySelectorAll('code.language-mermaid').forEach(function(codeEl) {
+                    var pre = codeEl.parentElement;
+                    var div = document.createElement('div');
+                    div.className = 'mermaid';
+                    div.textContent = codeEl.textContent;
+                    pre.parentElement.replaceChild(div, pre);
+                });
+
                 mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
             </script>
         </body>
