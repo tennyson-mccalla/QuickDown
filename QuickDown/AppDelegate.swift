@@ -8,7 +8,7 @@ enum Theme: String, CaseIterable {
     case sepia = "Sepia"
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
 
     var window: NSWindow!
     var webView: WKWebView!
@@ -20,6 +20,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
     private let maxRecentFiles = 10
+
+    // Search
+    private var searchBar: NSView!
+    private var searchField: NSSearchField!
+    private var searchResultLabel: NSTextField!
+    private var isSearchVisible = false
 
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
@@ -101,12 +107,255 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         dropZoneLabel.translatesAutoresizingMaskIntoConstraints = false
         dropView.addSubview(dropZoneLabel)
 
+        // Create container view for search bar + content
+        let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        containerView.autoresizingMask = [.width, .height]
+
+        // Setup search bar
+        setupSearchBar()
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(searchBar)
+
+        dropView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(dropView)
+
         NSLayoutConstraint.activate([
+            searchBar.topAnchor.constraint(equalTo: containerView.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            searchBar.heightAnchor.constraint(equalToConstant: 32),
+
+            dropView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            dropView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            dropView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            dropView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+
             dropZoneLabel.centerXAnchor.constraint(equalTo: dropView.centerXAnchor),
             dropZoneLabel.centerYAnchor.constraint(equalTo: dropView.centerYAnchor)
         ])
 
-        window.contentView = dropView
+        // Initially hide search bar
+        searchBar.isHidden = true
+
+        window.contentView = containerView
+    }
+
+    private func setupSearchBar() {
+        searchBar = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 32))
+        searchBar.wantsLayer = true
+        searchBar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+
+        // Search field
+        searchField = NSSearchField(frame: NSRect(x: 8, y: 4, width: 300, height: 24))
+        searchField.placeholderString = "Search in document"
+        searchField.delegate = self
+        searchField.target = self
+        searchField.action = #selector(searchFieldAction(_:))
+        searchField.translatesAutoresizingMaskIntoConstraints = false
+        searchBar.addSubview(searchField)
+
+        // Previous button
+        let prevButton = NSButton(title: "◀", target: self, action: #selector(findPrevious(_:)))
+        prevButton.bezelStyle = .inline
+        prevButton.translatesAutoresizingMaskIntoConstraints = false
+        searchBar.addSubview(prevButton)
+
+        // Next button
+        let nextButton = NSButton(title: "▶", target: self, action: #selector(findNext(_:)))
+        nextButton.bezelStyle = .inline
+        nextButton.translatesAutoresizingMaskIntoConstraints = false
+        searchBar.addSubview(nextButton)
+
+        // Result label
+        searchResultLabel = NSTextField(labelWithString: "")
+        searchResultLabel.font = NSFont.systemFont(ofSize: 11)
+        searchResultLabel.textColor = .secondaryLabelColor
+        searchResultLabel.translatesAutoresizingMaskIntoConstraints = false
+        searchBar.addSubview(searchResultLabel)
+
+        // Close button
+        let closeButton = NSButton(title: "✕", target: self, action: #selector(hideSearch(_:)))
+        closeButton.bezelStyle = .inline
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        searchBar.addSubview(closeButton)
+
+        NSLayoutConstraint.activate([
+            searchField.leadingAnchor.constraint(equalTo: searchBar.leadingAnchor, constant: 8),
+            searchField.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+            searchField.widthAnchor.constraint(equalToConstant: 250),
+
+            prevButton.leadingAnchor.constraint(equalTo: searchField.trailingAnchor, constant: 8),
+            prevButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+
+            nextButton.leadingAnchor.constraint(equalTo: prevButton.trailingAnchor, constant: 4),
+            nextButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+
+            searchResultLabel.leadingAnchor.constraint(equalTo: nextButton.trailingAnchor, constant: 12),
+            searchResultLabel.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
+
+            closeButton.trailingAnchor.constraint(equalTo: searchBar.trailingAnchor, constant: -8),
+            closeButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor)
+        ])
+    }
+
+    // MARK: - Search Actions
+
+    @objc func showSearch(_ sender: Any?) {
+        isSearchVisible = true
+        searchBar.isHidden = false
+        window.makeFirstResponder(searchField)
+    }
+
+    @objc func hideSearch(_ sender: Any?) {
+        isSearchVisible = false
+        searchBar.isHidden = true
+        clearSearchHighlights()
+        searchResultLabel.stringValue = ""
+    }
+
+    @objc func searchFieldAction(_ sender: NSSearchField) {
+        performSearch(sender.stringValue)
+    }
+
+    @objc func findNext(_ sender: Any?) {
+        webView.evaluateJavaScript("window.findNext && window.findNext()") { [weak self] result, _ in
+            if let info = result as? [String: Int],
+               let current = info["current"],
+               let total = info["total"] {
+                self?.searchResultLabel.stringValue = "\(current) of \(total)"
+            }
+        }
+    }
+
+    @objc func findPrevious(_ sender: Any?) {
+        webView.evaluateJavaScript("window.findPrevious && window.findPrevious()") { [weak self] result, _ in
+            if let info = result as? [String: Int],
+               let current = info["current"],
+               let total = info["total"] {
+                self?.searchResultLabel.stringValue = "\(current) of \(total)"
+            }
+        }
+    }
+
+    private func performSearch(_ query: String) {
+        guard !query.isEmpty else {
+            clearSearchHighlights()
+            searchResultLabel.stringValue = ""
+            return
+        }
+
+        let escapedQuery = query.replacingOccurrences(of: "'", with: "\\'")
+        let js = """
+        (function() {
+            // Clear previous highlights
+            document.querySelectorAll('.search-highlight').forEach(el => {
+                el.outerHTML = el.textContent;
+            });
+
+            const query = '\(escapedQuery)'.toLowerCase();
+            if (!query) return { count: 0, current: 0 };
+
+            const content = document.getElementById('content');
+            const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null, false);
+            const matches = [];
+            let node;
+
+            while (node = walker.nextNode()) {
+                const text = node.textContent.toLowerCase();
+                let index = 0;
+                while ((index = text.indexOf(query, index)) !== -1) {
+                    matches.push({ node: node, index: index });
+                    index += query.length;
+                }
+            }
+
+            // Highlight matches
+            for (let i = matches.length - 1; i >= 0; i--) {
+                const match = matches[i];
+                const range = document.createRange();
+                range.setStart(match.node, match.index);
+                range.setEnd(match.node, match.index + query.length);
+                const span = document.createElement('span');
+                span.className = 'search-highlight';
+                span.style.backgroundColor = '#ffff00';
+                span.style.color = '#000000';
+                range.surroundContents(span);
+            }
+
+            window.searchMatches = document.querySelectorAll('.search-highlight');
+            window.currentMatchIndex = 0;
+
+            if (window.searchMatches.length > 0) {
+                window.searchMatches[0].style.backgroundColor = '#ff9500';
+                window.searchMatches[0].scrollIntoView({ block: 'center' });
+            }
+
+            // Create scroll markers
+            var markerContainer = document.getElementById('search-markers');
+            if (!markerContainer) {
+                markerContainer = document.createElement('div');
+                markerContainer.id = 'search-markers';
+                markerContainer.style.cssText = 'position:fixed;right:0;top:0;width:8px;height:100%;pointer-events:none;z-index:9999;';
+                document.body.appendChild(markerContainer);
+            }
+            markerContainer.innerHTML = '';
+
+            var docHeight = document.documentElement.scrollHeight;
+            window.searchMatches.forEach(function(match, i) {
+                var rect = match.getBoundingClientRect();
+                var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                var absoluteTop = rect.top + scrollTop;
+                var percent = (absoluteTop / docHeight) * 100;
+                var marker = document.createElement('div');
+                marker.style.cssText = 'position:absolute;right:0;width:8px;height:3px;background:#ff9500;top:' + percent + '%;';
+                marker.dataset.index = i;
+                markerContainer.appendChild(marker);
+            });
+
+            window.findNext = function() {
+                if (!window.searchMatches || window.searchMatches.length === 0) return null;
+                window.searchMatches[window.currentMatchIndex].style.backgroundColor = '#ffff00';
+                window.currentMatchIndex = (window.currentMatchIndex + 1) % window.searchMatches.length;
+                window.searchMatches[window.currentMatchIndex].style.backgroundColor = '#ff9500';
+                window.searchMatches[window.currentMatchIndex].scrollIntoView({ block: 'center' });
+                return { current: window.currentMatchIndex + 1, total: window.searchMatches.length };
+            };
+
+            window.findPrevious = function() {
+                if (!window.searchMatches || window.searchMatches.length === 0) return null;
+                window.searchMatches[window.currentMatchIndex].style.backgroundColor = '#ffff00';
+                window.currentMatchIndex = (window.currentMatchIndex - 1 + window.searchMatches.length) % window.searchMatches.length;
+                window.searchMatches[window.currentMatchIndex].style.backgroundColor = '#ff9500';
+                window.searchMatches[window.currentMatchIndex].scrollIntoView({ block: 'center' });
+                return { current: window.currentMatchIndex + 1, total: window.searchMatches.length };
+            };
+
+            return { count: window.searchMatches.length, current: 1 };
+        })();
+        """
+
+        webView.evaluateJavaScript(js) { [weak self] result, error in
+            if let dict = result as? [String: Int] {
+                let count = dict["count"] ?? 0
+                if count > 0 {
+                    self?.searchResultLabel.stringValue = "1 of \(count)"
+                } else {
+                    self?.searchResultLabel.stringValue = "No matches"
+                }
+            }
+        }
+    }
+
+    private func clearSearchHighlights() {
+        webView.evaluateJavaScript("""
+            document.querySelectorAll('.search-highlight').forEach(el => {
+                el.outerHTML = el.textContent;
+            });
+            var markers = document.getElementById('search-markers');
+            if (markers) markers.remove();
+            window.searchMatches = null;
+            window.currentMatchIndex = 0;
+        """)
     }
 
     // MARK: - File Handling
@@ -303,11 +552,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func performPDFExport(to url: URL) {
         // Get the full content size from the web view
-        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] (height, error) in
+        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] (_, _) in
             guard let self = self else { return }
-
-            let contentHeight = (height as? CGFloat) ?? 792
-            let pageWidth: CGFloat = 612  // US Letter width in points
 
             let config = WKPDFConfiguration()
             // Don't set rect - let it capture full content
@@ -600,6 +846,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(NSMenuItem.separator())
+
+        let findItem = NSMenuItem(title: "Find…", action: #selector(showSearch(_:)), keyEquivalent: "f")
+        findItem.target = self
+        editMenu.addItem(findItem)
+
+        let findNextItem = NSMenuItem(title: "Find Next", action: #selector(findNext(_:)), keyEquivalent: "g")
+        findNextItem.target = self
+        editMenu.addItem(findNextItem)
+
+        let findPrevItem = NSMenuItem(title: "Find Previous", action: #selector(findPrevious(_:)), keyEquivalent: "G")
+        findPrevItem.target = self
+        editMenu.addItem(findPrevItem)
+
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
