@@ -303,11 +303,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func performPDFExport(to url: URL) {
         // Get the full content size from the web view
-        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] (height, error) in
+        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] (_, _) in
             guard let self = self else { return }
-
-            let contentHeight = (height as? CGFloat) ?? 792
-            let pageWidth: CGFloat = 612  // US Letter width in points
 
             let config = WKPDFConfiguration()
             // Don't set rect - let it capture full content
@@ -434,6 +431,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let markedJS = loadResource("marked.min", ext: "js")
         let highlightJS = loadResource("highlight.min", ext: "js")
+        let katexJS = loadResource("katex.min", ext: "js")
+        let katexCSS = loadResource("katex.min", ext: "css")
+        let autoRenderJS = loadResource("auto-render.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
@@ -449,9 +449,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
+            <style>\(katexCSS)</style>
             \(themeStyles)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
+            <script>\(katexJS)</script>
+            <script>\(autoRenderJS)</script>
         </head>
         <body>
             <div id="content"></div>
@@ -471,6 +474,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
+
+                renderMathInElement(document.getElementById('content'), {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\\\[', right: '\\\\]', display: true},
+                        {left: '\\\\(', right: '\\\\)', display: false}
+                    ],
+                    throwOnError: false
+                });
             </script>
         </body>
         </html>

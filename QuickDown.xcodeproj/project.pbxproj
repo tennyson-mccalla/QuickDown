@@ -11,6 +11,12 @@
 		17367452B188627F1497D46A /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		1EA056943427206238FF6ACE /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
 		2AD1E5193D883806588EF286 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */; };
+		3A4B5C6D7E8F9A0B1C2D3E4F /* katex.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 4B5C6D7E8F9A0B1C2D3E4F5A /* katex.min.js */; };
+		4C5D6E7F8A9B0C1D2E3F4A5B /* katex.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 4B5C6D7E8F9A0B1C2D3E4F5A /* katex.min.js */; };
+		5D6E7F8A9B0C1D2E3F4A5B6C /* katex.min.css in Resources */ = {isa = PBXBuildFile; fileRef = 6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */; };
+		6F7A8B9C0D1E2F3A4B5C6D7E /* katex.min.css in Resources */ = {isa = PBXBuildFile; fileRef = 6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */; };
+		7A8B9C0D1E2F3A4B5C6D7E8F /* auto-render.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */; };
+		8C9D0E1F2A3B4C5D6E7F8A9B /* auto-render.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */; };
 		326886DF4A9FC17336470B17 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
 		35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		3B7E5D7D7EEE740B7962D59C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F293BD209F9A11D94F4D7610 /* Assets.xcassets */; };
@@ -66,6 +72,9 @@
 		BEFCAA34D0746ED67719C27A /* github-dark.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "github-dark.min.css"; sourceTree = "<group>"; };
 		F293BD209F9A11D94F4D7610 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FC7EC6A2FA563669168D545A /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = marked.min.js; sourceTree = "<group>"; };
+		4B5C6D7E8F9A0B1C2D3E4F5A /* katex.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = katex.min.js; sourceTree = "<group>"; };
+		6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = katex.min.css; sourceTree = "<group>"; };
+		8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "auto-render.min.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +125,9 @@
 			children = (
 				43D2320AF1EABCEC69B3C66C /* highlight.min.js */,
 				FC7EC6A2FA563669168D545A /* marked.min.js */,
+				4B5C6D7E8F9A0B1C2D3E4F5A /* katex.min.js */,
+				6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */,
+				8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */,
 				5277C86A48E697618FC7FB67 /* styles.css */,
 				587D41C3B782DCC84EC44A22 /* highlight-styles */,
 			);
@@ -241,6 +253,9 @@
 				35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */,
 				65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */,
 				5EB936304DB630CA70016230 /* marked.min.js in Resources */,
+				3A4B5C6D7E8F9A0B1C2D3E4F /* katex.min.js in Resources */,
+				5D6E7F8A9B0C1D2E3F4A5B6C /* katex.min.css in Resources */,
+				7A8B9C0D1E2F3A4B5C6D7E8F /* auto-render.min.js in Resources */,
 				326886DF4A9FC17336470B17 /* styles.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -253,6 +268,9 @@
 				17367452B188627F1497D46A /* github.min.css in Resources */,
 				0268494772D952B21FFBC1DB /* highlight.min.js in Resources */,
 				1EA056943427206238FF6ACE /* marked.min.js in Resources */,
+				4C5D6E7F8A9B0C1D2E3F4A5B /* katex.min.js in Resources */,
+				6F7A8B9C0D1E2F3A4B5C6D7E /* katex.min.css in Resources */,
+				8C9D0E1F2A3B4C5D6E7F8A9B /* auto-render.min.js in Resources */,
 				96A95A6780F9A8A96E1B7027 /* styles.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
