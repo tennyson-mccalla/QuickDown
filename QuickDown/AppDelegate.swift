@@ -185,9 +185,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         tocTableView.delegate = self
         tocTableView.target = self
         tocTableView.action = #selector(tocItemClicked)
+        tocTableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TOC"))
         column.title = "Table of Contents"
+        column.resizingMask = .autoresizingMask
+        column.width = 200
         tocTableView.addTableColumn(column)
 
         // Create scroll view
@@ -568,35 +571,62 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
-    // MARK: - Recent Files
+    // MARK: - Recent Files (with security-scoped bookmarks for sandbox)
 
     private func addToRecentFiles(_ url: URL) {
-        var recentFiles = getRecentFiles()
+        var bookmarks = getRecentBookmarks()
 
-        // Remove if already exists (will re-add at front)
-        recentFiles.removeAll { $0.path == url.path }
+        // Remove existing bookmark for same path
+        bookmarks.removeAll { resolveBookmark($0)?.path == url.path }
 
-        // Add to front
-        recentFiles.insert(url, at: 0)
-
-        // Limit count
-        if recentFiles.count > maxRecentFiles {
-            recentFiles = Array(recentFiles.prefix(maxRecentFiles))
+        // Create security-scoped bookmark
+        do {
+            let bookmark = try url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            bookmarks.insert(bookmark, at: 0)
+        } catch {
+            // Fallback: store without bookmark (won't persist across launches)
+            print("Failed to create bookmark: \(error)")
         }
 
-        // Save as array of path strings
-        let paths = recentFiles.map { $0.path }
-        UserDefaults.standard.set(paths, forKey: recentFilesKey)
+        // Limit count
+        if bookmarks.count > maxRecentFiles {
+            bookmarks = Array(bookmarks.prefix(maxRecentFiles))
+        }
 
-        // Update menu
+        UserDefaults.standard.set(bookmarks, forKey: recentFilesKey)
         updateRecentFilesMenu()
     }
 
-    private func getRecentFiles() -> [URL] {
-        guard let paths = UserDefaults.standard.stringArray(forKey: recentFilesKey) else {
-            return []
+    private func getRecentBookmarks() -> [Data] {
+        return UserDefaults.standard.array(forKey: recentFilesKey) as? [Data] ?? []
+    }
+
+    private func resolveBookmark(_ data: Data) -> URL? {
+        var isStale = false
+        do {
+            let url = try URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            return url
+        } catch {
+            return nil
         }
-        return paths.compactMap { URL(fileURLWithPath: $0) }
+    }
+
+    private func getRecentFiles() -> [(url: URL, bookmark: Data)] {
+        return getRecentBookmarks().compactMap { bookmark in
+            if let url = resolveBookmark(bookmark) {
+                return (url, bookmark)
+            }
+            return nil
+        }
     }
 
     private func updateRecentFilesMenu() {
@@ -609,15 +639,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             emptyItem.isEnabled = false
             recentFilesMenu.addItem(emptyItem)
         } else {
-            for (index, url) in recentFiles.enumerated() {
+            for (index, entry) in recentFiles.enumerated() {
                 let item = NSMenuItem(
-                    title: url.lastPathComponent,
+                    title: entry.url.lastPathComponent,
                     action: #selector(openRecentFile(_:)),
                     keyEquivalent: index < 9 ? "\(index + 1)" : ""
                 )
                 item.keyEquivalentModifierMask = index < 9 ? [.command, .shift] : []
-                item.representedObject = url
-                item.toolTip = url.path
+                item.representedObject = entry.bookmark
+                item.toolTip = entry.url.path
                 recentFilesMenu.addItem(item)
             }
 
@@ -627,17 +657,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     @objc private func openRecentFile(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
+        guard let bookmark = sender.representedObject as? Data,
+              let url = resolveBookmark(bookmark) else {
+            showError("Could not resolve file from recent files")
+            return
+        }
+
+        // Start accessing the security-scoped resource
+        guard url.startAccessingSecurityScopedResource() else {
+            showError("Permission denied: \(url.lastPathComponent)")
+            return
+        }
 
         if FileManager.default.fileExists(atPath: url.path) {
             openFile(url)
+            // Note: we don't call stopAccessingSecurityScopedResource here
+            // because we need continued access for live reload
         } else {
+            url.stopAccessingSecurityScopedResource()
             showError("File not found: \(url.lastPathComponent)")
             // Remove from recents
-            var recentFiles = getRecentFiles()
-            recentFiles.removeAll { $0.path == url.path }
-            let paths = recentFiles.map { $0.path }
-            UserDefaults.standard.set(paths, forKey: recentFilesKey)
+            var bookmarks = getRecentBookmarks()
+            bookmarks.removeAll { $0 == bookmark }
+            UserDefaults.standard.set(bookmarks, forKey: recentFilesKey)
             updateRecentFilesMenu()
         }
     }
