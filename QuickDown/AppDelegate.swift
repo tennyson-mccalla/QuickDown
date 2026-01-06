@@ -434,6 +434,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         let markedJS = loadResource("marked.min", ext: "js")
         let highlightJS = loadResource("highlight.min", ext: "js")
+        let mermaidJS = loadResource("mermaid.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
@@ -450,14 +451,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
             \(themeStyles)
+            <style>
+                .mermaid { text-align: center; }
+            </style>
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
+            <script>\(mermaidJS)</script>
         </head>
         <body>
             <div id="content"></div>
             <script>
+                mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+                const renderer = new marked.Renderer();
+                const originalCodeRenderer = renderer.code.bind(renderer);
+                renderer.code = function(code, language, isEscaped) {
+                    if (language === 'mermaid') {
+                        return '<pre class="mermaid">' + code + '</pre>';
+                    }
+                    return originalCodeRenderer(code, language, isEscaped);
+                };
+
                 marked.setOptions({
+                    renderer: renderer,
                     highlight: function(code, lang) {
+                        if (lang === 'mermaid') return code;
                         if (lang && hljs.getLanguage(lang)) {
                             try {
                                 return hljs.highlight(code, { language: lang }).value;
@@ -471,6 +489,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
+                mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
             </script>
         </body>
         </html>

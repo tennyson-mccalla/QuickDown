@@ -8,8 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		0268494772D952B21FFBC1DB /* highlight.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 43D2320AF1EABCEC69B3C66C /* highlight.min.js */; };
+		0A1B2C3D4E5F6A7B8C9D0E1F /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 1F2E3D4C5B6A7980A1B2C3D4 /* mermaid.min.js */; };
 		17367452B188627F1497D46A /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
 		1EA056943427206238FF6ACE /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = FC7EC6A2FA563669168D545A /* marked.min.js */; };
+		2B3C4D5E6F7A8B9C0D1E2F3A /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 1F2E3D4C5B6A7980A1B2C3D4 /* mermaid.min.js */; };
 		2AD1E5193D883806588EF286 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F866241DF20D7EB0AC667D2 /* PreviewViewController.swift */; };
 		326886DF4A9FC17336470B17 /* styles.css in Resources */ = {isa = PBXBuildFile; fileRef = 5277C86A48E697618FC7FB67 /* styles.css */; };
 		35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */ = {isa = PBXBuildFile; fileRef = A1A6F4D69E914953460D626E /* github.min.css */; };
@@ -66,6 +68,7 @@
 		BEFCAA34D0746ED67719C27A /* github-dark.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "github-dark.min.css"; sourceTree = "<group>"; };
 		F293BD209F9A11D94F4D7610 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FC7EC6A2FA563669168D545A /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = marked.min.js; sourceTree = "<group>"; };
+		1F2E3D4C5B6A7980A1B2C3D4 /* mermaid.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mermaid.min.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +119,7 @@
 			children = (
 				43D2320AF1EABCEC69B3C66C /* highlight.min.js */,
 				FC7EC6A2FA563669168D545A /* marked.min.js */,
+				1F2E3D4C5B6A7980A1B2C3D4 /* mermaid.min.js */,
 				5277C86A48E697618FC7FB67 /* styles.css */,
 				587D41C3B782DCC84EC44A22 /* highlight-styles */,
 			);
@@ -241,6 +245,7 @@
 				35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */,
 				65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */,
 				5EB936304DB630CA70016230 /* marked.min.js in Resources */,
+				0A1B2C3D4E5F6A7B8C9D0E1F /* mermaid.min.js in Resources */,
 				326886DF4A9FC17336470B17 /* styles.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -253,6 +258,7 @@
 				17367452B188627F1497D46A /* github.min.css in Resources */,
 				0268494772D952B21FFBC1DB /* highlight.min.js in Resources */,
 				1EA056943427206238FF6ACE /* marked.min.js in Resources */,
+				2B3C4D5E6F7A8B9C0D1E2F3A /* mermaid.min.js in Resources */,
 				96A95A6780F9A8A96E1B7027 /* styles.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
