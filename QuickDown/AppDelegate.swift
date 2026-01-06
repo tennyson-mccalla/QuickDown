@@ -334,15 +334,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
 
-        do {
-            let content = try readFileWithFallbackEncoding(url: currentFileURL)
-            let html = generateHTML(markdown: content)
+        // Extract pre-rendered HTML from WKWebView (no JS needed in output)
+        webView.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                self.showError("Failed to extract HTML: \(error.localizedDescription)")
+                return
+            }
+
+            guard let renderedContent = result as? String else {
+                self.showError("Failed to extract HTML content")
+                return
+            }
+
+            let html = self.generateStaticHTML(content: renderedContent)
 
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [.html]
             savePanel.nameFieldStringValue = currentFileURL.deletingPathExtension().lastPathComponent + ".html"
 
-            savePanel.beginSheetModal(for: window) { response in
+            savePanel.beginSheetModal(for: self.window) { response in
                 guard response == .OK, let url = savePanel.url else { return }
 
                 do {
@@ -352,9 +364,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     self.showError("Failed to save HTML: \(error.localizedDescription)")
                 }
             }
-        } catch {
-            showError("Failed to read file: \(error.localizedDescription)")
         }
+    }
+
+    private func generateStaticHTML(content: String) -> String {
+        let stylesCSS = loadResource("styles", ext: "css")
+        let githubCSS = loadResource("github.min", ext: "css")
+        let githubDarkCSS = loadResource("github-dark.min", ext: "css")
+
+        let themeStyles = generateThemeStyles(
+            githubCSS: githubCSS,
+            githubDarkCSS: githubDarkCSS
+        )
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>\(stylesCSS)</style>
+            \(themeStyles)
+        </head>
+        <body>
+            <div id="content">\(content)</div>
+        </body>
+        </html>
+        """
     }
 
     private func showError(_ message: String) {
