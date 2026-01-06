@@ -217,6 +217,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         performSearch(sender.stringValue)
     }
 
+    // Handle Escape key to dismiss search
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == NSSelectorFromString("cancelOperation:") {
+            hideSearch(nil)
+            return true
+        }
+        return false
+    }
+
     @objc func findNext(_ sender: Any?) {
         webView.evaluateJavaScript("window.findNext && window.findNext()") { [weak self] result, _ in
             if let info = result as? [String: Int],
