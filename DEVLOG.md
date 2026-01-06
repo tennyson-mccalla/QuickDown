@@ -77,6 +77,15 @@ Sandboxed apps lose file permissions after restart. Storing paths as strings doe
 
 ---
 
+## Research TODO (for v0.2.0)
+- Search "QuickLook markdown" and find all alternatives
+- Identify free options to benchmark against
+- Identify paid options and analyze what premium features they offer that QuickDown doesn't
+- Known competitors: MacDown, Marked 2, Typora, iA Writer
+- Question to answer: What are paid apps offering that's worth the money?
+
+---
+
 ## Future Ideas (unprioritized)
 - Printing support
 - Multiple windows
