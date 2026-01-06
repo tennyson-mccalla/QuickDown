@@ -40,6 +40,14 @@ A lightweight macOS markdown previewer with QuickLook integration. Focused on be
 - **Services Menu** - Right-click text → Services → Preview as Markdown
 - **URL Scheme** - `quickdown://open?file=...` for automation
 
+### v0.2.0 (planned - performance)
+- **Benchmarking** - Compare render speed against MacDown, Marked 2, Typora, iA Writer
+- **Profiling** - Identify bottlenecks in render pipeline
+- **Lazy loading** - Defer heavy libraries (mermaid.min.js is 3.2 MB) until needed
+- **Large file optimization** - Progressive rendering, chunking for huge documents
+- **Caching** - Cache rendered HTML for unchanged content
+- **UI responsiveness** - Fix any hangs or stutters discovered during testing
+
 ### v2.0 (future)
 - **Editor Mode** - Split view edit/preview, syntax highlighting, save functionality
 - This is a significant shift from viewer to editor, intentionally deferred
