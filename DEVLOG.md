@@ -21,7 +21,7 @@ A lightweight macOS markdown previewer with QuickLook integration. Focused on be
 - Custom themes (System, Light, Dark, Sepia)
 - HTML export hotfix (portable, no JS required)
 
-### v0.1.3 (current)
+### v0.1.3
 - Mermaid diagram rendering
 - KaTeX math rendering (inline `$...$` and display `$$...$$`)
 - Table of Contents sidebar (Cmd+Ctrl+S to toggle)
@@ -30,15 +30,14 @@ A lightweight macOS markdown previewer with QuickLook integration. Focused on be
 - Security-scoped bookmarks for recent files (sandbox fix)
 - TOC column auto-resizing fix
 
+### v0.1.4 (current)
+- **Share Menu** - File → Share to AirDrop rendered HTML, copy as rich text, etc.
+- **Services Menu** - Right-click text → Services → Preview as Markdown (needs testing)
+- **URL Scheme** - `quickdown:///path/to/file.md` or `quickdown://open?file=...` for automation
+
 ---
 
 ## Roadmap
-
-### v0.1.4 (planned)
-- **Share Extension (receiving)** - Select markdown text in any app → Share → Preview in QuickDown
-- **Share Menu (sending)** - Share rendered output via AirDrop, copy as rich text, etc.
-- **Services Menu** - Right-click text → Services → Preview as Markdown
-- **URL Scheme** - `quickdown://open?file=...` for automation
 
 ### v0.2.0 (planned - performance)
 - **Benchmarking** - Compare render speed against MacDown, Marked 2, Typora, iA Writer
