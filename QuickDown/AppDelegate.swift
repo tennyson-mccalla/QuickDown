@@ -784,6 +784,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
+    @objc func shareDocument(_ sender: Any?) {
+        guard let sourceURL = currentFileURL else {
+            showError("No file loaded. Open a Markdown file first.")
+            return
+        }
+
+        // Extract rendered HTML from WebView
+        webView.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                self.showError("Failed to extract content: \(error.localizedDescription)")
+                return
+            }
+
+            guard let renderedContent = result as? String else {
+                self.showError("Failed to extract content")
+                return
+            }
+
+            // Create HTML content
+            let html = self.generateStaticHTML(content: renderedContent)
+
+            // Write to temporary file for AirDrop
+            let tempDir = FileManager.default.temporaryDirectory
+            let fileName = sourceURL.deletingPathExtension().lastPathComponent + ".html"
+            let tempFileURL = tempDir.appendingPathComponent(fileName)
+
+            do {
+                try html.write(to: tempFileURL, atomically: true, encoding: .utf8)
+            } catch {
+                self.showError("Failed to create shareable file: \(error.localizedDescription)")
+                return
+            }
+
+            // Share the file URL (works with AirDrop)
+            let shareItems: [Any] = [tempFileURL]
+
+            // Show share picker
+            let picker = NSSharingServicePicker(items: shareItems)
+
+            // Position the picker near the sender or use a default location
+            if let button = sender as? NSView {
+                picker.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            } else {
+                // Fallback: show relative to the window's content view
+                let rect = NSRect(x: self.window.frame.width / 2, y: self.window.frame.height - 50, width: 1, height: 1)
+                if let contentView = self.window.contentView {
+                    picker.show(relativeTo: rect, of: contentView, preferredEdge: .minY)
+                }
+            }
+        }
+    }
+
     private func generateStaticHTML(content: String) -> String {
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
@@ -1053,6 +1107,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         fileMenu.addItem(withTitle: "Export as PDF…", action: #selector(exportPDFAction(_:)), keyEquivalent: "e")
         fileMenu.addItem(withTitle: "Export as HTML…", action: #selector(exportHTMLAction(_:)), keyEquivalent: "E")
         fileMenu.addItem(NSMenuItem.separator())
+
+        let shareItem = NSMenuItem(title: "Share…", action: #selector(shareDocument(_:)), keyEquivalent: "")
+        shareItem.target = self
+        fileMenu.addItem(shareItem)
+
+        fileMenu.addItem(NSMenuItem.separator())
         fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
@@ -1178,7 +1238,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(exportPDFAction(_:)) ||
-           menuItem.action == #selector(exportHTMLAction(_:)) {
+           menuItem.action == #selector(exportHTMLAction(_:)) ||
+           menuItem.action == #selector(shareDocument(_:)) {
             return currentFileURL != nil
         }
         return true
