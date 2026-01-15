@@ -60,6 +60,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         setupMenu()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        // Register as Services provider
+        NSApp.servicesProvider = self
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -1250,6 +1253,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         openFile(url)
+    }
+
+    // MARK: - Services Menu
+
+    @objc func previewMarkdownService(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        guard let text = pboard.string(forType: .string) else {
+            error.pointee = "Could not read text from pasteboard" as NSString
+            return
+        }
+
+        // Create a temporary markdown file
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFileURL = tempDir.appendingPathComponent("Preview-\(UUID().uuidString.prefix(8)).md")
+
+        do {
+            try text.write(to: tempFileURL, atomically: true, encoding: .utf8)
+            openFile(tempFileURL)
+
+            // Bring window to front
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        } catch let writeError {
+            error.pointee = "Failed to create preview: \(writeError.localizedDescription)" as NSString
+        }
     }
 }
 
