@@ -41,6 +41,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var searchResultLabel: NSTextField!
     private var isSearchVisible = false
 
+    // Track setup state for deferred file opens
+    private var isSetupComplete = false
+    private var pendingFileURL: URL?
+
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
         get {
@@ -63,6 +67,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         // Register as Services provider
         NSApp.servicesProvider = self
+
+        // Mark setup complete and open any pending file
+        isSetupComplete = true
+        if let pendingURL = pendingFileURL {
+            pendingFileURL = nil
+            openFile(pendingURL)
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -1255,12 +1266,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         // Handle quickdown:// URL scheme
         if url.scheme == "quickdown" {
-            handleQuickDownURL(url)
+            if isSetupComplete {
+                handleQuickDownURL(url)
+            } else {
+                pendingFileURL = url
+            }
             return
         }
 
-        // Handle file URLs
-        openFile(url)
+        // Handle file URLs - defer if setup not complete
+        if isSetupComplete {
+            openFile(url)
+        } else {
+            pendingFileURL = url
+        }
     }
 
 
