@@ -1184,11 +1184,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         return true
     }
 
-    // MARK: - Open from Finder
+    // MARK: - Open from Finder / URL Scheme
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
+
+        // Handle quickdown:// URL scheme
+        if url.scheme == "quickdown" {
+            handleQuickDownURL(url)
+            return
+        }
+
+        // Handle file URLs
         openFile(url)
+    }
+
+    private func handleQuickDownURL(_ url: URL) {
+        // Support formats:
+        // quickdown:///path/to/file.md (path in URL path)
+        // quickdown://open?file=/path/to/file.md (path in query param)
+
+        var filePath: String?
+
+        // Check for query parameter first
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let queryItems = components.queryItems {
+            filePath = queryItems.first(where: { $0.name == "file" })?.value
+        }
+
+        // Fall back to URL path
+        if filePath == nil && !url.path.isEmpty {
+            filePath = url.path
+        }
+
+        guard let path = filePath, !path.isEmpty else {
+            showError("Invalid URL: no file path specified")
+            return
+        }
+
+        let fileURL = URL(fileURLWithPath: path)
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            openFile(fileURL)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            showError("File not found: \(path)")
+        }
     }
 }
 
