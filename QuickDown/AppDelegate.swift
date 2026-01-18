@@ -839,15 +839,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             // Show share picker
             let picker = NSSharingServicePicker(items: shareItems)
 
-            // Position the picker near the sender or use a default location
-            if let button = sender as? NSView {
-                picker.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            } else {
-                // Fallback: show relative to the window's content view
-                let rect = NSRect(x: self.window.frame.width / 2, y: self.window.frame.height - 50, width: 1, height: 1)
-                if let contentView = self.window.contentView {
-                    picker.show(relativeTo: rect, of: contentView, preferredEdge: .minY)
-                }
+            // Position the picker relative to the window's content view
+            // (sender may be deallocated by the time this async callback runs)
+            if let contentView = self.window.contentView {
+                let rect = NSRect(x: contentView.bounds.width / 2 - 1, y: contentView.bounds.height - 50, width: 2, height: 2)
+                picker.show(relativeTo: rect, of: contentView, preferredEdge: .minY)
             }
         }
     }
