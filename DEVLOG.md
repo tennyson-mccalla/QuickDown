@@ -69,6 +69,54 @@ Sandboxed apps lose file permissions after restart. Storing paths as strings doe
 
 ---
 
+## Technical Reference
+
+### Entitlements (CRITICAL - don't lose this info)
+
+**Main App (QuickDown.entitlements):**
+```xml
+<key>com.apple.security.app-sandbox</key>
+<true/>
+<key>com.apple.security.files.user-selected.read-write</key>
+<true/>
+<key>com.apple.security.files.bookmarks.app-scope</key>
+<true/>
+```
+
+**QuickLook Extension (MarkdownPreview.entitlements):**
+```xml
+<key>com.apple.security.app-sandbox</key>
+<true/>
+<key>com.apple.security.files.user-selected.read-only</key>
+<true/>
+<key>com.apple.security.network.client</key>
+<true/>
+```
+
+**Why these specific entitlements for QuickLook:**
+1. **DO NOT use `com.apple.security.inherit`** - QuickLook extensions are launched by `quicklookd` which is NOT sandboxed. There's nothing to inherit, causing crash: "Process is not in an inherited sandbox"
+2. **MUST have `network.client`** - WKWebView spawns separate WebContent and NetworkProcess processes that need to communicate via IPC. Without this, WebContent crashes with "Application does not have permission to communicate with network resources" even when loading local HTML.
+3. **`files.user-selected.read-only`** - Allows reading the file being previewed.
+
+### Services Menu
+
+Services require:
+1. `NSServices` array in Info.plist with `NSMenuItem`, `NSMessage`, `NSPortName`, `NSSendTypes`
+2. `NSApp.servicesProvider = self` in `applicationDidFinishLaunching`
+3. Method with signature: `@objc func methodName(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>)`
+4. After install, flush services cache: `/System/Library/CoreServices/pbs -flush && /System/Library/CoreServices/pbs -update`
+
+### Build & Release Checklist
+
+1. Archive: `xcodebuild -scheme QuickDown -configuration Release -archivePath build/QuickDown.xcarchive archive`
+2. Export with Developer ID: `xcodebuild -exportArchive -archivePath build/QuickDown.xcarchive -exportPath build/Export -exportOptionsPlist build/ExportOptions.plist`
+3. Notarize: `xcrun notarytool submit QuickDown.zip --keychain-profile "notarytool-profile" --wait`
+4. Staple: `xcrun stapler staple QuickDown.app`
+5. Verify extension: `pluginkit -m -v -i com.tennyson.QuickDown.MarkdownPreview`
+6. Verify entitlements: `codesign -d --entitlements - /Applications/QuickDown.app/Contents/PlugIns/MarkdownPreview.appex`
+
+---
+
 ## Current Stats
 - Source: ~1,300 lines (AppDelegate.swift)
 - Resources: 3.7 MB (mermaid.min.js is 3.2 MB)

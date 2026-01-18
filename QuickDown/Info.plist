@@ -90,9 +90,10 @@
 			<key>NSMessage</key>
 			<string>previewMarkdownService</string>
 			<key>NSPortName</key>
-			<string>QuickDown</string>
+			<string>com.tennyson.QuickDown</string>
 			<key>NSSendTypes</key>
 			<array>
+				<string>public.utf8-plain-text</string>
 				<string>NSStringPboardType</string>
 			</array>
 		</dict>
