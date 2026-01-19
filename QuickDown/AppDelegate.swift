@@ -1329,11 +1329,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         do {
             try text.write(to: tempFileURL, atomically: true, encoding: .utf8)
-            openFile(tempFileURL)
 
-            // Bring window to front
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
+            // Defer if setup not complete (app launched via service)
+            if isSetupComplete {
+                openFile(tempFileURL)
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                pendingFileURL = tempFileURL
+            }
         } catch let writeError {
             error.pointee = "Failed to create preview: \(writeError.localizedDescription)" as NSString
         }
