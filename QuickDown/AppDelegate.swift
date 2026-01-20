@@ -966,7 +966,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                         return hljs.highlightAuto(code).value;
                     },
                     gfm: true,
-                    breaks: false
+                    breaks: true
                 });
 
                 const markdown = `\(escapedMarkdown)`;
