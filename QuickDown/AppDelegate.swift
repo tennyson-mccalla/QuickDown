@@ -17,8 +17,9 @@ struct TOCItem {
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
 
     var window: NSWindow!
-    var webView: WKWebView!
+    var webView: WKWebView?  // Lazily initialized when first file is opened
     var dropZoneLabel: NSTextField!
+    private var mainContentView: DropView!  // Container for lazy WebView
     var currentFileURL: URL?
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
@@ -120,26 +121,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Create TOC sidebar
         setupTOCSidebar()
 
-        // Create drop view for main content
-        let dropView = DropView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
-        dropView.autoresizingMask = [.width, .height]
-        dropView.onFileDrop = { [weak self] url in
+        // Create drop view for main content (WebView created lazily when file opened)
+        mainContentView = DropView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
+        mainContentView.autoresizingMask = [.width, .height]
+        mainContentView.onFileDrop = { [weak self] url in
             self?.openFile(url)
         }
-        dropView.onClick = { [weak self] in
+        mainContentView.onClick = { [weak self] in
             self?.openDocument(nil)
         }
-
-        // Create WKWebView with drag support
-        let config = WKWebViewConfiguration()
-        let customWebView = DroppableWebView(frame: dropView.bounds, configuration: config)
-        customWebView.autoresizingMask = [.width, .height]
-        customWebView.isHidden = true
-        customWebView.onFileDrop = { [weak self] url in
-            self?.openFile(url)
-        }
-        webView = customWebView
-        dropView.addSubview(webView)
 
         // Create drop zone label
         dropZoneLabel = NSTextField(labelWithString: "Drop a Markdown file here\nor use File → Open")
@@ -147,16 +137,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         dropZoneLabel.font = NSFont.systemFont(ofSize: 18, weight: .medium)
         dropZoneLabel.textColor = .secondaryLabelColor
         dropZoneLabel.translatesAutoresizingMaskIntoConstraints = false
-        dropView.addSubview(dropZoneLabel)
+        mainContentView.addSubview(dropZoneLabel)
 
         NSLayoutConstraint.activate([
-            dropZoneLabel.centerXAnchor.constraint(equalTo: dropView.centerXAnchor),
-            dropZoneLabel.centerYAnchor.constraint(equalTo: dropView.centerYAnchor)
+            dropZoneLabel.centerXAnchor.constraint(equalTo: mainContentView.centerXAnchor),
+            dropZoneLabel.centerYAnchor.constraint(equalTo: mainContentView.centerYAnchor)
         ])
 
         // Add views to split view
         splitView.addArrangedSubview(tocScrollView)
-        splitView.addArrangedSubview(dropView)
+        splitView.addArrangedSubview(mainContentView)
 
         // Create container view for search bar + split view
         let containerView = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
@@ -226,7 +216,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let row = tocTableView.clickedRow
         guard row >= 0 && row < tocItems.count else { return }
         let item = tocItems[row]
-        webView.evaluateJavaScript("document.getElementById('\(item.id)')?.scrollIntoView({behavior: 'smooth'})")
+        webView?.evaluateJavaScript("document.getElementById('\(item.id)')?.scrollIntoView({behavior: 'smooth'})")
     }
 
     @objc func toggleSidebar(_ sender: Any?) {
@@ -328,7 +318,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     @objc func findNext(_ sender: Any?) {
-        webView.evaluateJavaScript("window.findNext && window.findNext()") { [weak self] result, _ in
+        webView?.evaluateJavaScript("window.findNext && window.findNext()") { [weak self] result, _ in
             if let info = result as? [String: Int],
                let current = info["current"],
                let total = info["total"] {
@@ -338,7 +328,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     @objc func findPrevious(_ sender: Any?) {
-        webView.evaluateJavaScript("window.findPrevious && window.findPrevious()") { [weak self] result, _ in
+        webView?.evaluateJavaScript("window.findPrevious && window.findPrevious()") { [weak self] result, _ in
             if let info = result as? [String: Int],
                let current = info["current"],
                let total = info["total"] {
@@ -444,7 +434,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         })();
         """
 
-        webView.evaluateJavaScript(js) { [weak self] result, error in
+        webView?.evaluateJavaScript(js) { [weak self] result, error in
             if let dict = result as? [String: Int] {
                 let count = dict["count"] ?? 0
                 if count > 0 {
@@ -457,7 +447,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func clearSearchHighlights() {
-        webView.evaluateJavaScript("""
+        webView?.evaluateJavaScript("""
             document.querySelectorAll('.search-highlight').forEach(el => {
                 el.outerHTML = el.textContent;
             });
@@ -470,9 +460,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // MARK: - File Handling
 
+    /// Lazily creates the WebView when first needed (saves ~0.3-0.5s on app launch)
+    private func ensureWebViewExists() {
+        guard webView == nil else { return }
+
+        let config = WKWebViewConfiguration()
+        let wv = DroppableWebView(frame: mainContentView.bounds, configuration: config)
+        wv.autoresizingMask = [.width, .height]
+        wv.onFileDrop = { [weak self] url in
+            self?.openFile(url)
+        }
+        wv.isHidden = true
+
+        mainContentView.addSubview(wv)
+        webView = wv
+    }
+
     func openFile(_ url: URL) {
         // Stop watching the previous file
         stopWatchingFile()
+
+        // Lazily create WebView on first file open
+        ensureWebViewExists()
 
         currentFileURL = url
         window.title = "QuickDown — \(url.lastPathComponent)"
@@ -488,8 +497,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocTableView.reloadData()
 
             let html = generateHTML(markdown: content)
-            webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
-            webView.isHidden = false
+            webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+            webView?.isHidden = false
             dropZoneLabel.isHidden = true
 
             // Start watching for changes
@@ -575,7 +584,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         guard let url = currentFileURL else { return }
 
         // Save scroll position before reload
-        webView.evaluateJavaScript("window.scrollY") { [weak self] (scrollY, _) in
+        webView?.evaluateJavaScript("window.scrollY") { [weak self] (scrollY, _) in
             guard let self = self else { return }
 
             do {
@@ -593,12 +602,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
 
                 let html = self.generateHTML(markdown: content)
-                self.webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+                self.webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
 
                 // Restore scroll position after content loads
                 if let scrollPosition = scrollY as? Double {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.webView.evaluateJavaScript("window.scrollTo(0, \(scrollPosition))")
+                        self.webView?.evaluateJavaScript("window.scrollTo(0, \(scrollPosition))")
                     }
                 }
             } catch {
@@ -758,14 +767,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func performPDFExport(to url: URL) {
+        guard let wv = webView else { return }
+
         // Get the full content size from the web view
-        webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] (_, _) in
-            guard let self = self else { return }
+        wv.evaluateJavaScript("document.body.scrollHeight") { [weak self] (_, _) in
+            guard let self = self, let wv = self.webView else { return }
 
             let config = WKPDFConfiguration()
             // Don't set rect - let it capture full content
 
-            self.webView.createPDF(configuration: config) { result in
+            wv.createPDF(configuration: config) { result in
                 switch result {
                 case .success(let data):
                     do {
@@ -788,7 +799,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
 
         // Extract pre-rendered HTML from WKWebView (no JS needed in output)
-        webView.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
+        webView?.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
             guard let self = self else { return }
 
             if let error = error {
@@ -827,7 +838,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
 
         // Extract rendered HTML from WebView
-        webView.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
+        webView?.evaluateJavaScript("document.getElementById('content').innerHTML") { [weak self] result, error in
             guard let self = self else { return }
 
             if let error = error {
@@ -1308,7 +1319,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             do {
                 let content = try readFileWithFallbackEncoding(url: url)
                 let html = generateHTML(markdown: content)
-                webView.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+                webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
             } catch {
                 // Ignore reload errors
             }
