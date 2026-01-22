@@ -22,6 +22,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     var currentFileURL: URL?
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
+    private var reloadDebounceWorkItem: DispatchWorkItem?
+    private var lastContentHash: Int = 0
 
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
@@ -478,6 +480,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         do {
             let content = try readFileWithFallbackEncoding(url: url)
 
+            // Store content hash for change detection
+            lastContentHash = content.hashValue
+
             // Parse TOC from markdown
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
@@ -542,7 +547,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         )
 
         fileWatcher?.setEventHandler { [weak self] in
-            self?.reloadCurrentFile()
+            // Debounce: cancel pending reload and schedule a new one
+            self?.reloadDebounceWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.reloadCurrentFile()
+            }
+            self?.reloadDebounceWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
         }
 
         fileWatcher?.setCancelHandler { [weak self] in
@@ -569,6 +580,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
             do {
                 let content = try self.readFileWithFallbackEncoding(url: url)
+
+                // Skip re-render if content hasn't changed
+                let contentHash = content.hashValue
+                if contentHash == self.lastContentHash {
+                    return
+                }
+                self.lastContentHash = contentHash
 
                 // Update TOC
                 self.tocItems = self.parseTOC(from: content)
@@ -888,30 +906,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // MARK: - HTML Generation
 
+    // Cache for loaded resources (static files that never change)
+    private static var resourceCache: [String: String] = [:]
+
     private func loadResource(_ name: String, ext: String) -> String {
+        let cacheKey = "\(name).\(ext)"
+
+        // Return cached version if available
+        if let cached = AppDelegate.resourceCache[cacheKey] {
+            return cached
+        }
+
+        var content = ""
+
         // Try loading from the MarkdownPreview extension bundle
         if let plugInsURL = Bundle.main.builtInPlugInsURL {
             let extensionURL = plugInsURL.appendingPathComponent("MarkdownPreview.appex")
             if let bundle = Bundle(url: extensionURL),
                let url = bundle.url(forResource: name, withExtension: ext),
-               let content = try? String(contentsOf: url, encoding: .utf8) {
-                return content
-            }
-            // Try Resources subdirectory
-            let resourceURL = extensionURL
-                .appendingPathComponent("Contents/Resources")
-                .appendingPathComponent("\(name).\(ext)")
-            if let content = try? String(contentsOf: resourceURL, encoding: .utf8) {
-                return content
+               let loaded = try? String(contentsOf: url, encoding: .utf8) {
+                content = loaded
+            } else {
+                // Try Resources subdirectory
+                let resourceURL = extensionURL
+                    .appendingPathComponent("Contents/Resources")
+                    .appendingPathComponent("\(name).\(ext)")
+                if let loaded = try? String(contentsOf: resourceURL, encoding: .utf8) {
+                    content = loaded
+                }
             }
         }
+
         // Fallback: try main bundle
-        if let url = Bundle.main.url(forResource: name, withExtension: ext),
-           let content = try? String(contentsOf: url, encoding: .utf8) {
-            return content
+        if content.isEmpty {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext),
+               let loaded = try? String(contentsOf: url, encoding: .utf8) {
+                content = loaded
+            }
         }
-        print("Warning: Could not load resource \(name).\(ext)")
-        return ""
+
+        if content.isEmpty {
+            print("Warning: Could not load resource \(name).\(ext)")
+        } else {
+            // Cache for future use
+            AppDelegate.resourceCache[cacheKey] = content
+        }
+
+        return content
     }
 
     private func generateHTML(markdown: String) -> String {
