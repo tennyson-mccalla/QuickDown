@@ -917,20 +917,68 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private func generateHTML(markdown: String) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
 
+        // Detect which features are needed (lazy loading)
+        let needsMermaid = markdown.contains("```mermaid")
+        let needsMath = markdown.contains("$") || markdown.contains("\\[") || markdown.contains("\\(")
+
+        // Always load core libraries
         let markedJS = loadResource("marked.min", ext: "js")
         let highlightJS = loadResource("highlight.min", ext: "js")
-        let mermaidJS = loadResource("mermaid.min", ext: "js")
-        let katexJS = loadResource("katex.min", ext: "js")
-        let katexCSS = loadResource("katex.min", ext: "css")
-        let autoRenderJS = loadResource("auto-render.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
+
+        // Conditionally load heavy libraries
+        let mermaidJS = needsMermaid ? loadResource("mermaid.min", ext: "js") : ""
+        let katexJS = needsMath ? loadResource("katex.min", ext: "js") : ""
+        let katexCSS = needsMath ? loadResource("katex.min", ext: "css") : ""
+        let autoRenderJS = needsMath ? loadResource("auto-render.min", ext: "js") : ""
 
         let themeStyles = generateThemeStyles(
             githubCSS: githubCSS,
             githubDarkCSS: githubDarkCSS
         )
+
+        // Build conditional script/style blocks
+        let mermaidStyle = needsMermaid ? """
+            <style>
+                .mermaid { text-align: center; background: transparent; }
+                .mermaid svg { max-width: 100%; }
+            </style>
+            """ : ""
+
+        let mermaidScript = needsMermaid ? "<script>\(mermaidJS)</script>" : ""
+        let katexStyleTag = needsMath ? "<style>\(katexCSS)</style>" : ""
+        let katexScript = needsMath ? "<script>\(katexJS)</script><script>\(autoRenderJS)</script>" : ""
+
+        // Build conditional initialization code
+        let mermaidInit = needsMermaid ? "mermaid.initialize({ startOnLoad: false, theme: 'default' });" : ""
+
+        let mermaidHighlightCheck = needsMermaid ? "if (lang === 'mermaid') return code;" : ""
+
+        let mermaidPostProcess = needsMermaid ? """
+                // Post-process: convert mermaid code blocks to mermaid divs
+                document.querySelectorAll('code.language-mermaid').forEach(function(codeEl) {
+                    var pre = codeEl.parentElement;
+                    var div = document.createElement('div');
+                    div.className = 'mermaid';
+                    div.textContent = codeEl.textContent;
+                    pre.parentElement.replaceChild(div, pre);
+                });
+                mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+            """ : ""
+
+        let mathRender = needsMath ? """
+                renderMathInElement(document.getElementById('content'), {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\\\[', right: '\\\\]', display: true},
+                        {left: '\\\\(', right: '\\\\)', display: false}
+                    ],
+                    throwOnError: false
+                });
+            """ : ""
 
         return """
         <!DOCTYPE html>
@@ -938,26 +986,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
-            <style>\(katexCSS)</style>
+            \(katexStyleTag)
             \(themeStyles)
-            <style>
-                .mermaid { text-align: center; background: transparent; }
-                .mermaid svg { max-width: 100%; }
-            </style>
+            \(mermaidStyle)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
-            <script>\(mermaidJS)</script>
-            <script>\(katexJS)</script>
-            <script>\(autoRenderJS)</script>
+            \(mermaidScript)
+            \(katexScript)
         </head>
         <body>
             <div id="content"></div>
             <script>
-                mermaid.initialize({ startOnLoad: false, theme: 'default' });
+                \(mermaidInit)
 
                 marked.setOptions({
                     highlight: function(code, lang) {
-                        if (lang === 'mermaid') return code;
+                        \(mermaidHighlightCheck)
                         if (lang && hljs.getLanguage(lang)) {
                             try {
                                 return hljs.highlight(code, { language: lang }).value;
@@ -972,26 +1016,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
-                // Post-process: convert mermaid code blocks to mermaid divs
-                document.querySelectorAll('code.language-mermaid').forEach(function(codeEl) {
-                    var pre = codeEl.parentElement;
-                    var div = document.createElement('div');
-                    div.className = 'mermaid';
-                    div.textContent = codeEl.textContent;
-                    pre.parentElement.replaceChild(div, pre);
-                });
-
-                mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
-
-                renderMathInElement(document.getElementById('content'), {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\\\[', right: '\\\\]', display: true},
-                        {left: '\\\\(', right: '\\\\)', display: false}
-                    ],
-                    throwOnError: false
-                });
+                \(mermaidPostProcess)
+                \(mathRender)
 
                 // Add IDs to headings for TOC navigation
                 document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function(heading) {

@@ -100,7 +100,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
                         return hljs.highlightAuto(code).value;
                     },
                     gfm: true,
-                    breaks: false
+                    breaks: true
                 });
 
                 const markdown = `\(escapedMarkdown)`;

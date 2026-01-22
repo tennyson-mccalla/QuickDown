@@ -1,0 +1,6 @@
+# Generated test files (large, regenerate with scripts/generate-test-files.py)
+files/
+
+# Benchmark results (machine-specific)
+*.trace
+benchmark-results.txt
