@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 APP_NAME="QuickDown"
-APP_PATH="build/export/QuickDown.app" 
+APP_PATH="build/Export/QuickDown.app" 
 BG_IMAGE="build/dmg-background.png"
 OUTPUT_DMG="build/${APP_NAME}-Installer.dmg"
 VOL_NAME="${APP_NAME}"
