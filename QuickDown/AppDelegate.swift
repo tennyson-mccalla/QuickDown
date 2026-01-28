@@ -1006,7 +1006,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Build conditional initialization code
         let mermaidInit = needsMermaid ? "mermaid.initialize({ startOnLoad: false, theme: 'default' });" : ""
 
-        let mermaidHighlightCheck = needsMermaid ? "if (lang === 'mermaid') return code;" : ""
 
         let mermaidPostProcess = needsMermaid ? """
                 // Post-process: convert mermaid code blocks to mermaid divs
@@ -1052,21 +1051,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 \(mermaidInit)
 
                 marked.setOptions({
-                    highlight: function(code, lang) {
-                        \(mermaidHighlightCheck)
-                        if (lang && hljs.getLanguage(lang)) {
-                            try {
-                                return hljs.highlight(code, { language: lang }).value;
-                            } catch (e) {}
-                        }
-                        return hljs.highlightAuto(code).value;
-                    },
                     gfm: true,
                     breaks: true
                 });
 
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
+
+                // Apply syntax highlighting (marked v5+ removed the highlight option)
+                document.querySelectorAll('pre code').forEach((block) => {
+                    // Skip mermaid blocks
+                    if (!block.classList.contains('language-mermaid')) {
+                        hljs.highlightElement(block);
+                    }
+                });
 
                 \(mermaidPostProcess)
                 \(mathRender)

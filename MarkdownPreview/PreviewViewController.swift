@@ -91,20 +91,17 @@ class PreviewViewController: NSViewController, QLPreviewingController {
             <div id="content"></div>
             <script>
                 marked.setOptions({
-                    highlight: function(code, lang) {
-                        if (lang && hljs.getLanguage(lang)) {
-                            try {
-                                return hljs.highlight(code, { language: lang }).value;
-                            } catch (e) {}
-                        }
-                        return hljs.highlightAuto(code).value;
-                    },
                     gfm: true,
                     breaks: true
                 });
 
                 const markdown = `\(escapedMarkdown)`;
                 document.getElementById('content').innerHTML = marked.parse(markdown);
+
+                // Apply syntax highlighting (marked v5+ removed the highlight option)
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
             </script>
         </body>
         </html>
