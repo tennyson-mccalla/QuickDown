@@ -19,7 +19,9 @@
 
 ---
 
-<!-- TODO: Add screenshot of main window with mermaid diagram visible -->
+<p align="center">
+  <img src="screenshots/main-window.png" width="600" alt="QuickDown Screenshot">
+</p>
 
 ## Features
 
