@@ -65,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupWindow()
         setupMenu()
+        updateWindowBackground()  // Apply saved theme to window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
@@ -471,6 +472,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             self?.openFile(url)
         }
         wv.isHidden = true
+
+        // Make WebView background transparent so theme colors show correctly
+        wv.setValue(false, forKey: "drawsBackground")
 
         mainContentView.addSubview(wv)
         webView = wv
@@ -1123,6 +1127,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             <style>
             :root { color-scheme: dark only; }
             \(githubDarkCSS)
+            html, body, #content {
+                background-color: #0d1117 !important;
+                color: #e6edf3 !important;
+            }
+            table, th, td, tr {
+                background-color: #0d1117 !important;
+                color: #e6edf3 !important;
+                border-color: #30363d !important;
+            }
+            th {
+                background-color: #161b22 !important;
+            }
+            tr:nth-child(2n) {
+                background-color: #161b22 !important;
+            }
+            pre, code {
+                background-color: #161b22 !important;
+                color: #e6edf3 !important;
+            }
+            a { color: #58a6ff !important; }
+            h1, h2, h3, h4, h5, h6 { color: #e6edf3 !important; }
+            blockquote { border-color: #30363d !important; color: #8b949e !important; }
+            hr { background-color: #30363d !important; }
             </style>
             """
         case .sepia:
@@ -1131,7 +1158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             <style>
             :root { color-scheme: light only; }
             \(githubCSS)
-            body, #content {
+            html, body, #content {
                 background-color: #f4ecd8 !important;
                 color: #5b4636 !important;
             }
@@ -1312,6 +1339,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             }
         }
 
+        // Update window background to match theme
+        updateWindowBackground()
+
         // Reload current file with new theme
         if let url = currentFileURL {
             do {
@@ -1322,6 +1352,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 // Ignore reload errors
             }
         }
+    }
+
+    private func updateWindowBackground() {
+        let backgroundColor: NSColor
+        switch currentTheme {
+        case .system:
+            // Use system default
+            backgroundColor = .windowBackgroundColor
+        case .light:
+            backgroundColor = NSColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
+        case .dark:
+            backgroundColor = NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1.0)  // #0d1117
+        case .sepia:
+            backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
+        }
+        window.backgroundColor = backgroundColor
+        mainContentView.wantsLayer = true
+        mainContentView.layer?.backgroundColor = backgroundColor.cgColor
     }
 
     // MARK: - Menu Validation
