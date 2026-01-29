@@ -481,6 +481,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     func openFile(_ url: URL) {
+        // Safety check - window must exist
+        guard window != nil else {
+            NSLog("QuickDown: openFile called but window is nil")
+            return
+        }
+
         // Stop watching the previous file
         stopWatchingFile()
 
@@ -500,8 +506,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
 
-            let html = generateHTML(markdown: content)
-            webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+            // Convert relative image/link paths to absolute for local file access
+            let baseDir = url.deletingLastPathComponent()
+            let processedContent = resolveRelativePaths(in: content, baseDirectory: baseDir)
+
+            let html = generateHTML(markdown: processedContent)
+
+            // Write to temp file and use loadFileURL to allow local resource access
+            let tempHTMLURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("quickdown-preview.html")
+            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+
             webView?.isHidden = false
             dropZoneLabel.isHidden = true
 
@@ -570,9 +586,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
 
         fileWatcher?.setCancelHandler { [weak self] in
-            if let fd = self?.fileDescriptor, fd >= 0 {
-                close(fd)
-                self?.fileDescriptor = -1
+            // File descriptor is closed synchronously in stopWatchingFile()
+            // This handler just ensures cleanup if the source is cancelled another way
+            if let self = self, self.fileDescriptor >= 0 {
+                close(self.fileDescriptor)
+                self.fileDescriptor = -1
             }
         }
 
@@ -580,8 +598,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func stopWatchingFile() {
+        reloadDebounceWorkItem?.cancel()
+        reloadDebounceWorkItem = nil
         fileWatcher?.cancel()
         fileWatcher = nil
+        // Close file descriptor synchronously to avoid race with cancel handler
+        if fileDescriptor >= 0 {
+            close(fileDescriptor)
+            fileDescriptor = -1
+        }
     }
 
     private func reloadCurrentFile() {
@@ -605,8 +630,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocItems = self.parseTOC(from: content)
                 self.tocTableView.reloadData()
 
-                let html = self.generateHTML(markdown: content)
-                self.webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+                // Convert relative paths to absolute for local file access
+                let baseDir = url.deletingLastPathComponent()
+                let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
+
+                let html = self.generateHTML(markdown: processedContent)
+
+                // Write to temp file and use loadFileURL to allow local resource access
+                let tempHTMLURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("quickdown-preview.html")
+                try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
 
                 // Restore scroll position after content loads
                 if let scrollPosition = scrollY as? Double {
@@ -1184,6 +1218,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
+    /// Convert relative image/link paths to absolute file:// URLs for local rendering
+    private func resolveRelativePaths(in markdown: String, baseDirectory: URL) -> String {
+        var result = markdown
+
+        // Resolve markdown image syntax: ![alt](relative/path)
+        let mdImagePattern = #"!\[([^\]]*)\]\(([^)]+)\)"#
+        if let regex = try? NSRegularExpression(pattern: mdImagePattern) {
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+            for match in matches {
+                guard let pathRange = Range(match.range(at: 2), in: result) else { continue }
+                let path = String(result[pathRange])
+                // Skip URLs (http://, https://, data:, file://)
+                if path.hasPrefix("http://") || path.hasPrefix("https://") ||
+                   path.hasPrefix("data:") || path.hasPrefix("file://") { continue }
+                let absoluteURL = baseDirectory.appendingPathComponent(path)
+                if FileManager.default.fileExists(atPath: absoluteURL.path) {
+                    result.replaceSubrange(pathRange, with: absoluteURL.absoluteString)
+                }
+            }
+        }
+
+        // Resolve HTML img src: src="relative/path"
+        let htmlSrcPattern = #"src\s*=\s*"([^"]+)""#
+        if let regex = try? NSRegularExpression(pattern: htmlSrcPattern) {
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+            for match in matches {
+                guard let pathRange = Range(match.range(at: 1), in: result) else { continue }
+                let path = String(result[pathRange])
+                if path.hasPrefix("http://") || path.hasPrefix("https://") ||
+                   path.hasPrefix("data:") || path.hasPrefix("file://") { continue }
+                let absoluteURL = baseDirectory.appendingPathComponent(path)
+                if FileManager.default.fileExists(atPath: absoluteURL.path) {
+                    result.replaceSubrange(pathRange, with: absoluteURL.absoluteString)
+                }
+            }
+        }
+
+        return result
+    }
+
     private func escapeForJavaScript(_ string: String) -> String {
         var result = string
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
@@ -1346,8 +1422,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         if let url = currentFileURL {
             do {
                 let content = try readFileWithFallbackEncoding(url: url)
-                let html = generateHTML(markdown: content)
-                webView?.loadHTMLString(html, baseURL: url.deletingLastPathComponent())
+                let baseDir = url.deletingLastPathComponent()
+                let processedContent = resolveRelativePaths(in: content, baseDirectory: baseDir)
+                let html = generateHTML(markdown: processedContent)
+
+                let tempHTMLURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("quickdown-preview.html")
+                try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
             } catch {
                 // Ignore reload errors
             }
@@ -1367,9 +1449,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         case .sepia:
             backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
         }
-        window.backgroundColor = backgroundColor
-        mainContentView.wantsLayer = true
-        mainContentView.layer?.backgroundColor = backgroundColor.cgColor
+        if currentTheme == .system {
+            // Let system appearance handle colors dynamically
+            window.backgroundColor = .windowBackgroundColor
+            mainContentView.wantsLayer = false
+            mainContentView.layer?.backgroundColor = nil
+            searchBar.wantsLayer = false
+            searchBar.layer?.backgroundColor = nil
+            dropZoneLabel.textColor = .secondaryLabelColor
+        } else {
+            // Explicit theme colors
+            window.backgroundColor = backgroundColor
+            mainContentView.wantsLayer = true
+            mainContentView.layer?.backgroundColor = backgroundColor.cgColor
+            searchBar.wantsLayer = true
+            searchBar.layer?.backgroundColor = backgroundColor.cgColor
+
+            let labelColor: NSColor
+            switch currentTheme {
+            case .system:
+                labelColor = .secondaryLabelColor  // won't reach here
+            case .light:
+                labelColor = NSColor(white: 0.5, alpha: 1.0)
+            case .dark:
+                labelColor = NSColor(white: 0.6, alpha: 1.0)
+            case .sepia:
+                labelColor = NSColor(red: 0.5, green: 0.4, blue: 0.3, alpha: 1.0)
+            }
+            dropZoneLabel.textColor = labelColor
+        }
     }
 
     // MARK: - Menu Validation
