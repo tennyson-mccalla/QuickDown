@@ -42,6 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var searchBar: NSView!
     private var searchField: NSSearchField!
     private var searchResultLabel: NSTextField!
+    private var searchBarHeightConstraint: NSLayoutConstraint!
     private var isSearchVisible = false
 
     // Track setup state for deferred file opens
@@ -161,11 +162,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         splitView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(splitView)
 
+        searchBarHeightConstraint = searchBar.heightAnchor.constraint(equalToConstant: 0)
+
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: containerView.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            searchBar.heightAnchor.constraint(equalToConstant: 32),
+            searchBarHeightConstraint,
 
             splitView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
@@ -178,7 +181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         splitView.setPosition(isSidebarVisible ? 200 : 0, ofDividerAt: 0)
         tocScrollView.isHidden = !isSidebarVisible
 
-        // Initially hide search bar
+        // Initially hide search bar (height already 0)
         searchBar.isHidden = true
 
         window.contentView = containerView
@@ -295,11 +298,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     @objc func showSearch(_ sender: Any?) {
         isSearchVisible = true
         searchBar.isHidden = false
+        searchBarHeightConstraint.constant = 32
         window.makeFirstResponder(searchField)
     }
 
     @objc func hideSearch(_ sender: Any?) {
         isSearchVisible = false
+        searchBarHeightConstraint.constant = 0
         searchBar.isHidden = true
         clearSearchHighlights()
         searchResultLabel.stringValue = ""
