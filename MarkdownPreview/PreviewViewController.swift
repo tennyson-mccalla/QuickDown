@@ -70,11 +70,56 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     private func generateHTML(markdown: String) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
 
+        // Detect which features are needed
+        let needsMermaid = markdown.contains("```mermaid")
+        let needsMath = markdown.contains("$") || markdown.contains("\\[") || markdown.contains("\\(")
+
         let markedJS = loadResource("marked.min", ext: "js")
         let highlightJS = loadResource("highlight.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
+
+        let mermaidJS = needsMermaid ? loadResource("mermaid.min", ext: "js") : ""
+        let katexJS = needsMath ? loadResource("katex.min", ext: "js") : ""
+        let katexCSS = needsMath ? loadResource("katex.min", ext: "css") : ""
+        let autoRenderJS = needsMath ? loadResource("auto-render.min", ext: "js") : ""
+
+        let mermaidStyle = needsMermaid ? """
+            <style>
+                .mermaid { text-align: center; background: transparent; }
+                .mermaid svg { max-width: 100%; }
+            </style>
+            """ : ""
+        let mermaidScript = needsMermaid ? "<script>\(mermaidJS)</script>" : ""
+        let katexStyleTag = needsMath ? "<style>\(katexCSS)</style>" : ""
+        let katexScript = needsMath ? "<script>\(katexJS)</script><script>\(autoRenderJS)</script>" : ""
+
+        let mermaidInit = needsMermaid ? "mermaid.initialize({ startOnLoad: false, theme: 'default' });" : ""
+
+        let mermaidPostProcess = needsMermaid ? """
+                // Post-process: convert mermaid code blocks to mermaid divs
+                document.querySelectorAll('code.language-mermaid').forEach(function(codeEl) {
+                    var pre = codeEl.parentElement;
+                    var div = document.createElement('div');
+                    div.className = 'mermaid';
+                    div.textContent = codeEl.textContent;
+                    pre.parentNode.replaceChild(div, pre);
+                });
+                mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+            """ : ""
+
+        let mathRender = needsMath ? """
+                renderMathInElement(document.getElementById('content'), {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false},
+                        {left: '\\\\[', right: '\\\\]', display: true},
+                        {left: '\\\\(', right: '\\\\)', display: false}
+                    ],
+                    throwOnError: false
+                });
+            """ : ""
 
         return """
         <!DOCTYPE html>
@@ -82,14 +127,20 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
+            \(katexStyleTag)
             <style media="(prefers-color-scheme: light)">\(githubCSS)</style>
             <style media="(prefers-color-scheme: dark)">\(githubDarkCSS)</style>
+            \(mermaidStyle)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
+            \(mermaidScript)
+            \(katexScript)
         </head>
         <body>
             <div id="content"></div>
             <script>
+                \(mermaidInit)
+
                 marked.setOptions({
                     gfm: true,
                     breaks: true
@@ -100,8 +151,14 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)
                 document.querySelectorAll('pre code').forEach((block) => {
-                    hljs.highlightElement(block);
+                    // Skip mermaid blocks
+                    if (!block.classList.contains('language-mermaid')) {
+                        hljs.highlightElement(block);
+                    }
                 });
+
+                \(mermaidPostProcess)
+                \(mathRender)
             </script>
         </body>
         </html>
