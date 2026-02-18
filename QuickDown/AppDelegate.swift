@@ -657,7 +657,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     .appendingPathComponent("quickdown-preview.html")
                 try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
-                self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+                self.crossfadeTransition {
+                    self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+                }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
             }
@@ -1434,18 +1436,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             self.pendingScrollRestoreY = result as? Double
 
             if let url = self.currentFileURL {
-                do {
-                    let content = try self.readFileWithFallbackEncoding(url: url)
-                    let baseDir = url.deletingLastPathComponent()
-                    let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
-                    let html = self.generateHTML(markdown: processedContent)
+                self.crossfadeTransition {
+                    do {
+                        let content = try self.readFileWithFallbackEncoding(url: url)
+                        let baseDir = url.deletingLastPathComponent()
+                        let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
+                        let html = self.generateHTML(markdown: processedContent)
 
-                    let tempHTMLURL = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("quickdown-preview.html")
-                    try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-                    self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
-                } catch {
-                    // Ignore reload errors
+                        let tempHTMLURL = FileManager.default.temporaryDirectory
+                            .appendingPathComponent("quickdown-preview.html")
+                        try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                        self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+                    } catch {
+                        // Ignore reload errors
+                    }
                 }
             }
         }
