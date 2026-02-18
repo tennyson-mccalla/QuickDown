@@ -1657,9 +1657,26 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
 
 extension AppDelegate: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        let startFade = { [weak self] in
+            guard let self = self, let overlay = self.snapshotOverlay else { return }
+            self.snapshotOverlay = nil
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.3
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                overlay.animator().alphaValue = 0
+            }) {
+                overlay.removeFromSuperview()
+            }
+        }
+
         if let scrollY = pendingScrollRestoreY {
-            webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))")
             pendingScrollRestoreY = nil
+            // Scroll first, then fade — ensures content is at correct position before reveal
+            webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
+                startFade()
+            }
+        } else {
+            startFade()
         }
     }
 }
