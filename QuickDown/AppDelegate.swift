@@ -1451,6 +1451,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
+    /// Captures a snapshot of the current webview, pins it as an overlay,
+    /// executes `action` (which should trigger a loadFileURL), then fades
+    /// the overlay out in didFinish once new content is ready.
+    private func crossfadeTransition(then action: @escaping () -> Void) {
+        guard let webView = webView, !webView.isHidden, snapshotOverlay == nil else {
+            // No webview, not visible, or transition already in progress — skip
+            action()
+            return
+        }
+
+        webView.takeSnapshot(with: nil) { [weak self] image, _ in
+            guard let self = self, let image = image else {
+                action()
+                return
+            }
+
+            let overlay = NSImageView(frame: webView.bounds)
+            overlay.image = image
+            overlay.imageScaling = .scaleAxesIndependently
+            overlay.autoresizingMask = [.width, .height]
+            webView.addSubview(overlay)
+            self.snapshotOverlay = overlay
+
+            action()
+        }
+    }
+
     private func updateWindowBackground() {
         let backgroundColor: NSColor
         switch currentTheme {
