@@ -583,22 +583,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         )
 
         fileWatcher?.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            let eventData = self.fileWatcher?.data ?? []
+
             // Debounce: cancel pending reload and schedule a new one
-            self?.reloadDebounceWorkItem?.cancel()
+            self.reloadDebounceWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
                 self?.reloadCurrentFile()
             }
-            self?.reloadDebounceWorkItem = workItem
+            self.reloadDebounceWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
+
+            // Atomic saves (write-then-rename) replace the inode, invalidating our
+            // file descriptor. Restart the watcher to track the new inode.
+            if eventData.contains(.rename) || eventData.contains(.delete) {
+                let watchedURL = url
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    guard let self = self, self.currentFileURL == watchedURL else { return }
+                    self.stopWatchingFile()
+                    self.startWatchingFile(watchedURL)
+                }
+            }
         }
 
-        fileWatcher?.setCancelHandler { [weak self] in
-            // File descriptor is closed synchronously in stopWatchingFile()
-            // This handler just ensures cleanup if the source is cancelled another way
-            if let self = self, self.fileDescriptor >= 0 {
-                close(self.fileDescriptor)
-                self.fileDescriptor = -1
-            }
+        let fd = fileDescriptor
+        fileWatcher?.setCancelHandler {
+            // Capture fd by value so restarting the watcher doesn't accidentally
+            // close the new file descriptor when this cancel handler fires.
+            close(fd)
         }
 
         fileWatcher?.resume()
@@ -607,13 +619,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private func stopWatchingFile() {
         reloadDebounceWorkItem?.cancel()
         reloadDebounceWorkItem = nil
-        fileWatcher?.cancel()
+        fileWatcher?.cancel()  // cancel handler owns the close of the captured fd
         fileWatcher = nil
-        // Close file descriptor synchronously to avoid race with cancel handler
-        if fileDescriptor >= 0 {
-            close(fileDescriptor)
-            fileDescriptor = -1
-        }
+        fileDescriptor = -1
     }
 
     private func reloadCurrentFile() {
