@@ -1,5 +1,13 @@
 # QuickDown Development Log
 
+## v0.3.0 — Smooth Transitions
+
+- Smooth 300ms crossfade transition on theme changes (no more hard cut)
+- Smooth 300ms crossfade transition on live reloads
+- Fixed live reload silently dying after first atomic save (editors like VS Code, Zed)
+- Fixed scroll position resetting on theme change and live reload
+- Fixed Mermaid diagrams and KaTeX math not rendering in QuickLook extension
+
 ## What is QuickDown?
 A lightweight macOS markdown previewer with QuickLook integration. Focused on being fast and simple - a viewer, not an editor.
 
