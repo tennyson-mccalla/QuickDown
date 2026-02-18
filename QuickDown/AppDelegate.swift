@@ -49,6 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var isSetupComplete = false
     private var pendingFileURL: URL?
     private var pendingScrollRestoreY: Double?
+    private var snapshotOverlay: NSImageView?
 
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
