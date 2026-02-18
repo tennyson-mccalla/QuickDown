@@ -48,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // Track setup state for deferred file opens
     private var isSetupComplete = false
     private var pendingFileURL: URL?
+    private var pendingScrollRestoreY: Double?
 
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
@@ -473,6 +474,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let config = WKWebViewConfiguration()
         let wv = DroppableWebView(frame: mainContentView.bounds, configuration: config)
         wv.autoresizingMask = [.width, .height]
+        wv.navigationDelegate = self
         wv.onFileDrop = { [weak self] url in
             self?.openFile(url)
         }
@@ -645,14 +647,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 let tempHTMLURL = FileManager.default.temporaryDirectory
                     .appendingPathComponent("quickdown-preview.html")
                 try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                self.pendingScrollRestoreY = scrollY as? Double
                 self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
-
-                // Restore scroll position after content loads
-                if let scrollPosition = scrollY as? Double {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.webView?.evaluateJavaScript("window.scrollTo(0, \(scrollPosition))")
-                    }
-                }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
             }
@@ -1423,20 +1419,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Update window background to match theme
         updateWindowBackground()
 
-        // Reload current file with new theme
-        if let url = currentFileURL {
-            do {
-                let content = try readFileWithFallbackEncoding(url: url)
-                let baseDir = url.deletingLastPathComponent()
-                let processedContent = resolveRelativePaths(in: content, baseDirectory: baseDir)
-                let html = generateHTML(markdown: processedContent)
+        // Capture scroll position, then reload with new theme and restore position
+        webView?.evaluateJavaScript("window.scrollY") { [weak self] result, _ in
+            guard let self = self else { return }
+            self.pendingScrollRestoreY = result as? Double
 
-                let tempHTMLURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("quickdown-preview.html")
-                try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-                webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
-            } catch {
-                // Ignore reload errors
+            if let url = self.currentFileURL {
+                do {
+                    let content = try self.readFileWithFallbackEncoding(url: url)
+                    let baseDir = url.deletingLastPathComponent()
+                    let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
+                    let html = self.generateHTML(markdown: processedContent)
+
+                    let tempHTMLURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("quickdown-preview.html")
+                    try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                    self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+                } catch {
+                    // Ignore reload errors
+                }
             }
         }
     }
@@ -1613,6 +1614,17 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
         ])
 
         return container
+    }
+}
+
+// MARK: - WKNavigationDelegate
+
+extension AppDelegate: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if let scrollY = pendingScrollRestoreY {
+            webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))")
+            pendingScrollRestoreY = nil
+        }
     }
 }
 
