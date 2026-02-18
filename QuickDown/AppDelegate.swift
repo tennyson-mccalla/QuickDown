@@ -1461,8 +1461,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             return
         }
 
-        webView.takeSnapshot(with: nil) { [weak self] image, _ in
-            guard let self = self, let image = image else {
+        webView.takeSnapshot(with: nil) { [weak self, weak webView] image, _ in
+            guard let self = self, let webView = webView, let image = image else {
                 action()
                 return
             }
@@ -1673,7 +1673,9 @@ extension AppDelegate: WKNavigationDelegate {
             pendingScrollRestoreY = nil
             // Scroll first, then fade — ensures content is at correct position before reveal
             webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
-                startFade()
+                DispatchQueue.main.async {
+                    startFade()
+                }
             }
         } else {
             startFade()
