@@ -936,11 +936,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
 
-        let themeStyles = generateThemeStyles(
-            githubCSS: githubCSS,
-            githubDarkCSS: githubDarkCSS
-        )
-
         return """
         <!DOCTYPE html>
         <html>
@@ -948,7 +943,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>\(stylesCSS)</style>
-            \(themeStyles)
+            <style id="hl-light">\(githubCSS)</style>
+            <style id="hl-dark">\(githubDarkCSS)</style>
+            <script>
+            function applyTheme(theme) {
+                var html = document.documentElement;
+                var hlLight = document.getElementById('hl-light');
+                var hlDark  = document.getElementById('hl-dark');
+                if (theme === 'system') {
+                    html.removeAttribute('data-theme');
+                } else {
+                    html.setAttribute('data-theme', theme);
+                }
+                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
+                if (hlLight) hlLight.disabled = useDark;
+                if (hlDark)  hlDark.disabled  = !useDark;
+            }
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                if (!document.documentElement.hasAttribute('data-theme')) {
+                    applyTheme('system');
+                }
+            });
+            applyTheme('\(currentTheme.rawValue.lowercased())');
+            </script>
         </head>
         <body>
             <div id="content">\(content)</div>
