@@ -1036,11 +1036,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let katexCSS = needsMath ? loadResource("katex.min", ext: "css") : ""
         let autoRenderJS = needsMath ? loadResource("auto-render.min", ext: "js") : ""
 
-        let themeStyles = generateThemeStyles(
-            githubCSS: githubCSS,
-            githubDarkCSS: githubDarkCSS
-        )
-
         // Build conditional script/style blocks
         let mermaidStyle = needsMermaid ? """
             <style>
@@ -1088,7 +1083,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
             \(katexStyleTag)
-            \(themeStyles)
+            <style id="hl-light">\(githubCSS)</style>
+            <style id="hl-dark">\(githubDarkCSS)</style>
+            <script>
+            function applyTheme(theme) {
+                var html = document.documentElement;
+                var hlLight = document.getElementById('hl-light');
+                var hlDark  = document.getElementById('hl-dark');
+                if (theme === 'system') {
+                    html.removeAttribute('data-theme');
+                } else {
+                    html.setAttribute('data-theme', theme);
+                }
+                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
+                if (hlLight) hlLight.disabled = useDark;
+                if (hlDark)  hlDark.disabled  = !useDark;
+            }
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                if (!document.documentElement.hasAttribute('data-theme')) {
+                    applyTheme('system');
+                }
+            });
+            applyTheme('\(currentTheme.rawValue.lowercased())');
+            </script>
             \(mermaidStyle)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
