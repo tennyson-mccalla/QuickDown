@@ -223,12 +223,6 @@ kbd {
     --table-border: #d4c4a8;
 }
 
-/* Smooth color transitions when switching themes */
-body, pre, code, blockquote, table, th, td, a,
-h1, h2, h3, h4, h5, h6 {
-    transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
-}
-
 /* Print styles */
 @media print {
     :root {

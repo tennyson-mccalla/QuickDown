@@ -945,28 +945,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             <style>\(stylesCSS)</style>
             <style id="hl-light">\(githubCSS)</style>
             <style id="hl-dark">\(githubDarkCSS)</style>
-            <script>
-            function applyTheme(theme) {
-                var html = document.documentElement;
-                var hlLight = document.getElementById('hl-light');
-                var hlDark  = document.getElementById('hl-dark');
-                if (theme === 'system') {
-                    html.removeAttribute('data-theme');
-                } else {
-                    html.setAttribute('data-theme', theme);
-                }
-                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
-                if (hlLight) hlLight.disabled = useDark;
-                if (hlDark)  hlDark.disabled  = !useDark;
-            }
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-                if (!document.documentElement.hasAttribute('data-theme')) {
-                    applyTheme('system');
-                }
-            });
-            applyTheme('\(currentTheme.rawValue.lowercased())');
-            </script>
+            \(themeScript)
         </head>
         <body>
             <div id="content">\(content)</div>
@@ -984,6 +963,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     // MARK: - HTML Generation
+
+    private var themeScript: String {
+        """
+        <script>
+        function applyTheme(theme) {
+            var html = document.documentElement;
+            var hlLight = document.getElementById('hl-light');
+            var hlDark  = document.getElementById('hl-dark');
+            if (theme === 'system') {
+                html.removeAttribute('data-theme');
+            } else {
+                html.setAttribute('data-theme', theme);
+            }
+            var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
+            if (hlLight) hlLight.disabled = useDark;
+            if (hlDark)  hlDark.disabled  = !useDark;
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+            if (!document.documentElement.hasAttribute('data-theme')) {
+                applyTheme('system');
+            }
+        });
+        applyTheme('\(currentTheme.rawValue.lowercased())');
+        </script>
+        """
+    }
 
     // Cache for loaded resources (static files that never change)
     private static var resourceCache: [String: String] = [:]
@@ -1103,28 +1109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             \(katexStyleTag)
             <style id="hl-light">\(githubCSS)</style>
             <style id="hl-dark">\(githubDarkCSS)</style>
-            <script>
-            function applyTheme(theme) {
-                var html = document.documentElement;
-                var hlLight = document.getElementById('hl-light');
-                var hlDark  = document.getElementById('hl-dark');
-                if (theme === 'system') {
-                    html.removeAttribute('data-theme');
-                } else {
-                    html.setAttribute('data-theme', theme);
-                }
-                var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
-                if (hlLight) hlLight.disabled = useDark;
-                if (hlDark)  hlDark.disabled  = !useDark;
-            }
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
-                if (!document.documentElement.hasAttribute('data-theme')) {
-                    applyTheme('system');
-                }
-            });
-            applyTheme('\(currentTheme.rawValue.lowercased())');
-            </script>
+            \(themeScript)
             \(mermaidStyle)
             <script>\(markedJS)</script>
             <script>\(highlightJS)</script>
@@ -1369,7 +1354,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Update window background to match theme
         updateWindowBackground()
 
-        webView?.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
+        guard let webView = webView, !webView.isHidden, snapshotOverlay == nil else {
+            webView?.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
+            return
+        }
+
+        webView.takeSnapshot(with: nil) { [weak self, weak webView] image, _ in
+            guard let self = self, let webView = webView else { return }
+            if let image = image {
+                let overlay = NSImageView(frame: webView.bounds)
+                overlay.image = image
+                overlay.imageScaling = .scaleAxesIndependently
+                overlay.autoresizingMask = [.width, .height]
+                webView.addSubview(overlay)
+                self.snapshotOverlay = overlay
+                webView.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')") { [weak self, weak overlay] _, _ in
+                    guard let overlay = overlay else { return }
+                    NSAnimationContext.runAnimationGroup({ context in
+                        context.duration = 0.25
+                        overlay.animator().alphaValue = 0
+                    }, completionHandler: { [weak self, weak overlay] in
+                        overlay?.removeFromSuperview()
+                        self?.snapshotOverlay = nil
+                    })
+                }
+            } else {
+                webView.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
+            }
+        }
     }
 
     /// Captures a snapshot of the current webview, pins it as an overlay,
@@ -1400,47 +1412,38 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func updateWindowBackground() {
-        let backgroundColor: NSColor
-        switch currentTheme {
-        case .system:
-            // Use system default
-            backgroundColor = .windowBackgroundColor
-        case .light:
-            backgroundColor = NSColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
-        case .dark:
-            backgroundColor = NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1.0)  // #0d1117
-        case .sepia:
-            backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
-        }
         if currentTheme == .system {
-            // Let system appearance handle colors dynamically
             window.backgroundColor = .windowBackgroundColor
             mainContentView.wantsLayer = false
             mainContentView.layer?.backgroundColor = nil
             searchBar.wantsLayer = false
             searchBar.layer?.backgroundColor = nil
             dropZoneLabel.textColor = .secondaryLabelColor
-        } else {
-            // Explicit theme colors
-            window.backgroundColor = backgroundColor
-            mainContentView.wantsLayer = true
-            mainContentView.layer?.backgroundColor = backgroundColor.cgColor
-            searchBar.wantsLayer = true
-            searchBar.layer?.backgroundColor = backgroundColor.cgColor
-
-            let labelColor: NSColor
-            switch currentTheme {
-            case .system:
-                labelColor = .secondaryLabelColor  // won't reach here
-            case .light:
-                labelColor = NSColor(white: 0.5, alpha: 1.0)
-            case .dark:
-                labelColor = NSColor(white: 0.6, alpha: 1.0)
-            case .sepia:
-                labelColor = NSColor(red: 0.5, green: 0.4, blue: 0.3, alpha: 1.0)
-            }
-            dropZoneLabel.textColor = labelColor
+            return
         }
+
+        let backgroundColor: NSColor
+        let labelColor: NSColor
+        switch currentTheme {
+        case .light:
+            backgroundColor = NSColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
+            labelColor = NSColor(white: 0.5, alpha: 1.0)
+        case .dark:
+            backgroundColor = NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1.0)  // #0d1117
+            labelColor = NSColor(white: 0.6, alpha: 1.0)
+        case .sepia:
+            backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
+            labelColor = NSColor(red: 0.5, green: 0.4, blue: 0.3, alpha: 1.0)
+        case .system:
+            return  // already handled above
+        }
+
+        window.backgroundColor = backgroundColor
+        mainContentView.wantsLayer = true
+        mainContentView.layer?.backgroundColor = backgroundColor.cgColor
+        searchBar.wantsLayer = true
+        searchBar.layer?.backgroundColor = backgroundColor.cgColor
+        dropZoneLabel.textColor = labelColor
     }
 
     // MARK: - Menu Validation
