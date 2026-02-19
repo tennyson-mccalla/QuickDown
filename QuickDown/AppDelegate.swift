@@ -1466,29 +1466,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Update window background to match theme
         updateWindowBackground()
 
-        // Capture scroll position, then reload with new theme and restore position
-        webView?.evaluateJavaScript("window.scrollY") { [weak self] result, _ in
-            guard let self = self else { return }
-            self.pendingScrollRestoreY = result as? Double
-
-            if let url = self.currentFileURL {
-                self.crossfadeTransition {
-                    do {
-                        let content = try self.readFileWithFallbackEncoding(url: url)
-                        let baseDir = url.deletingLastPathComponent()
-                        let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
-                        let html = self.generateHTML(markdown: processedContent)
-
-                        let tempHTMLURL = FileManager.default.temporaryDirectory
-                            .appendingPathComponent("quickdown-preview.html")
-                        try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-                        self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
-                    } catch {
-                        // Ignore reload errors
-                    }
-                }
-            }
-        }
+        webView?.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
     }
 
     /// Captures a snapshot of the current webview, pins it as an overlay,
