@@ -1,5 +1,13 @@
 # QuickDown Development Log
 
+## v0.4.0 — CSS Variables Theme Refactor
+
+- Theme changes are now instant CSS variable updates — no page reload, no scroll loss
+- Smooth crossfade animation on theme switch via snapshot overlay (same as live reload)
+- Scroll position always preserved on theme change (no reload = no scroll loss)
+- Deleted `generateThemeStyles()` — theme colors now live entirely in `styles.css`
+- Adding a new theme now requires only a CSS block + one enum case
+
 ## v0.3.0 — Smooth Transitions
 
 - Smooth 300ms crossfade transition on theme changes (no more hard cut)
