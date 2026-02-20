@@ -13,12 +13,9 @@ macOS Markdown preview app with a QuickLook extension. Renders Markdown files wi
 
 ---
 
-## SuperNavigator Quick Start
+## SuperNavigator Auto-Start
 
-**Every session begins with**:
-```
-"Start my SuperNavigator session"
-```
+At the beginning of every session, automatically invoke the `supernavigator:nav-start` skill to load project context. Do not wait for the user to ask.
 
 **Core workflow**:
 1. **Start session** → Loads both layers automatically
