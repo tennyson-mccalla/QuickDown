@@ -1,0 +1,45 @@
+{
+  "version": "6.0.0",
+  "project_name": "QuickDown",
+  "tech_stack": "Swift, AppKit, WKWebView, CSS Custom Properties, Xcode",
+  "layers": {
+    "os_layer_enabled": true,
+    "app_layer_enabled": true
+  },
+  "project_management": "none",
+  "task_prefix": "TASK",
+  "team_chat": "none",
+  "auto_load_navigator": true,
+  "compact_strategy": "conservative",
+  "tom_features": {
+    "verification_checkpoints": true,
+    "confirmation_threshold": "high-stakes",
+    "profile_enabled": true,
+    "diagnose_enabled": true,
+    "belief_anchors": false
+  },
+  "loop_mode": {
+    "enabled": false,
+    "max_iterations": 5,
+    "stagnation_threshold": 3,
+    "exit_requires_explicit_signal": true,
+    "show_status_block": true
+  },
+  "app_layer_features": {
+    "tdd_enforced": true,
+    "git_worktrees_enabled": true,
+    "subagent_development": true,
+    "systematic_debugging": true
+  },
+  "implicit_integration": {
+    "auto_save_markers": true,
+    "auto_compact_threshold": 0.85,
+    "auto_update_nav_tasks": true,
+    "trigger_boundaries": [
+      "before_brainstorming",
+      "after_plan_complete",
+      "after_code_review",
+      "on_branch_finish"
+    ]
+  }
+}

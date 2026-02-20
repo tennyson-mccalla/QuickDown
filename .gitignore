@@ -27,3 +27,7 @@ xcuserdata/
 
 # Claude
 .claude/
+
+# SuperNavigator
+.context-markers/
+.agent/.nav-temp/
