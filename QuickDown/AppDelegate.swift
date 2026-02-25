@@ -1126,7 +1126,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     breaks: true
                 });
 
-                const markdown = `\(escapedMarkdown)`;
+                // marked v15 treats ~single~ tildes as strikethrough, which is not standard GFM.
+                // Preprocess: protect lone tildes outside code blocks/spans by replacing with HTML entity.
+                const preprocessTildes = (md) => {
+                    const parts = md.split(/(```[^]*?```|`[^`]*`)/);
+                    return parts.map((part, i) => i % 2 === 1 ? part :
+                        part.replace(/~~/g, 'QDDBLTILDE').replace(/~/g, '&#126;').replace(/QDDBLTILDE/g, '~~')
+                    ).join('');
+                };
+
+                const markdown = preprocessTildes(`\(escapedMarkdown)`);
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)

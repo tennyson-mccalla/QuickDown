@@ -64,7 +64,7 @@ $$\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$
 - [x] Instant startup (~0.1s)
 - [x] Quick Look integration for Finder previews
 - [x] Works offline, no telemetry
-- [ ] World domination
+- [ ] World ~~domination~~ optimization
 
 ## Blockquotes
 
