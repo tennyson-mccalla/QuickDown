@@ -61,6 +61,16 @@ Press **Space** on any markdown file in Finder for instant preview—no app laun
 
 ## Installation
 
+### App Store
+[<img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" height="40" alt="Download on the App Store">](https://apps.apple.com/app/quickdown/id6759303233)
+
+### Homebrew
+```bash
+brew tap tennyson-mccalla/tap
+brew install --cask quickdown
+```
+
+### Direct Download
 Download **QuickDown.dmg** from [Releases](https://github.com/tennyson-mccalla/QuickDown/releases/latest), open it, and drag to Applications.
 
 Launch once to register the QuickLook extension, then press Space on any `.md` file in Finder.
