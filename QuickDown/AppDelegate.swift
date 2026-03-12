@@ -6,6 +6,9 @@ enum Theme: String, CaseIterable {
     case light = "Light"
     case dark = "Dark"
     case sepia = "Sepia"
+    case solarizedLight = "Solarized Light"
+    case solarizedDark = "Solarized Dark"
+    case nord = "Nord"
 }
 
 struct TOCItem {
@@ -45,11 +48,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var searchBarHeightConstraint: NSLayoutConstraint!
     private var isSearchVisible = false
 
+    // Word count
+    private var wordCountLabel: NSTextField!
+
     // Track setup state for deferred file opens
     private var isSetupComplete = false
     private var pendingFileURL: URL?
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
+
+    // Font size
+    private let fontScaleKey = "FontScale"
+    private let fontScaleMin = 0.7
+    private let fontScaleMax = 2.0
+    private let fontScaleStep = 0.1
+    private var fontScale: Double {
+        get {
+            let val = UserDefaults.standard.double(forKey: fontScaleKey)
+            return val > 0 ? val : 1.0
+        }
+        set {
+            let clamped = min(max(newValue, fontScaleMin), fontScaleMax)
+            UserDefaults.standard.set(clamped, forKey: fontScaleKey)
+        }
+    }
 
     private let themeKey = "SelectedTheme"
     private var currentTheme: Theme {
@@ -164,6 +186,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         splitView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(splitView)
 
+        // Word/character count status bar
+        wordCountLabel = NSTextField(labelWithString: "")
+        wordCountLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        wordCountLabel.textColor = .tertiaryLabelColor
+        wordCountLabel.alignment = .right
+        wordCountLabel.translatesAutoresizingMaskIntoConstraints = false
+        wordCountLabel.isHidden = true
+        containerView.addSubview(wordCountLabel)
+
         searchBarHeightConstraint = searchBar.heightAnchor.constraint(equalToConstant: 0)
 
         NSLayoutConstraint.activate([
@@ -175,7 +206,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             splitView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            splitView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+            splitView.bottomAnchor.constraint(equalTo: wordCountLabel.topAnchor),
+
+            wordCountLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
+            wordCountLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
+            wordCountLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -4),
+            wordCountLabel.heightAnchor.constraint(equalToConstant: 18)
         ])
 
         // Set initial sidebar state
@@ -528,6 +564,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
             webView?.isHidden = false
             dropZoneLabel.isHidden = true
+            updateWordCount(content)
 
             // Start watching for changes
             startWatchingFile(url)
@@ -642,9 +679,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 }
                 self.lastContentHash = contentHash
 
-                // Update TOC
+                // Update TOC and word count
                 self.tocItems = self.parseTOC(from: content)
                 self.tocTableView.reloadData()
+                self.updateWordCount(content)
 
                 // Convert relative paths to absolute for local file access
                 let baseDir = url.deletingLastPathComponent()
@@ -977,7 +1015,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 html.setAttribute('data-theme', theme);
             }
             var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            var useDark = theme === 'dark' || (theme === 'system' && prefersDark);
+            var useDark = theme === 'dark' || theme === 'solarized dark' || theme === 'nord' || (theme === 'system' && prefersDark);
             if (hlLight) hlLight.disabled = useDark;
             if (hlDark)  hlDark.disabled  = !useDark;
         }
@@ -1102,7 +1140,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         return """
         <!DOCTYPE html>
-        <html>
+        <html style="font-size: \(fontScale)em">
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
@@ -1126,6 +1164,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     breaks: true
                 });
 
+                // Strip YAML frontmatter (--- delimited block at top of file)
+                const stripFrontmatter = (md) => {
+                    if (!md.startsWith('---\\n') && !md.startsWith('---\\r')) return md;
+                    const end = md.indexOf('\\n---', 3);
+                    if (end === -1) return md;
+                    return md.substring(end + 4).replace(/^\\r?\\n/, '');
+                };
+
                 // marked v15 treats ~single~ tildes as strikethrough, which is not standard GFM.
                 // Preprocess: protect lone tildes outside code blocks/spans by replacing with HTML entity.
                 const preprocessTildes = (md) => {
@@ -1135,7 +1181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     ).join('');
                 };
 
-                const markdown = preprocessTildes(`\(escapedMarkdown)`);
+                const markdown = preprocessTildes(stripFrontmatter(`\(escapedMarkdown)`));
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)
@@ -1156,6 +1202,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                         .replace(/\\s+/g, '-')
                         .replace(/[^a-z0-9-]/g, '');
                     heading.id = id;
+                });
+
+                // Make task list checkboxes interactive (visual toggle only)
+                document.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                    cb.removeAttribute('disabled');
+                    cb.style.cursor = 'pointer';
                 });
             </script>
         </body>
@@ -1308,6 +1360,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         themeMenuItem.submenu = themeMenu
         viewMenu.addItem(themeMenuItem)
 
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let zoomInItem = NSMenuItem(title: "Zoom In", action: #selector(zoomIn(_:)), keyEquivalent: "=")
+        zoomInItem.target = self
+        viewMenu.addItem(zoomInItem)
+
+        let zoomOutItem = NSMenuItem(title: "Zoom Out", action: #selector(zoomOut(_:)), keyEquivalent: "-")
+        zoomOutItem.target = self
+        viewMenu.addItem(zoomOutItem)
+
+        let zoomResetItem = NSMenuItem(title: "Actual Size", action: #selector(zoomReset(_:)), keyEquivalent: "0")
+        zoomResetItem.target = self
+        viewMenu.addItem(zoomResetItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
@@ -1396,6 +1462,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     /// Captures a snapshot of the current webview, pins it as an overlay,
     /// executes `action` (which should trigger a loadFileURL), then fades
     /// the overlay out in didFinish once new content is ready.
+    @objc func zoomIn(_ sender: Any?) {
+        fontScale += fontScaleStep
+        applyFontScale()
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        fontScale -= fontScaleStep
+        applyFontScale()
+    }
+
+    @objc func zoomReset(_ sender: Any?) {
+        fontScale = 1.0
+        applyFontScale()
+    }
+
+    private func applyFontScale() {
+        webView?.evaluateJavaScript("document.documentElement.style.fontSize = '\(fontScale)em'")
+    }
+
     private func crossfadeTransition(then action: @escaping () -> Void) {
         guard let webView = webView, !webView.isHidden, snapshotOverlay == nil else {
             // No webview, not visible, or transition already in progress — skip
@@ -1443,6 +1528,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         case .sepia:
             backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
             labelColor = NSColor(red: 0.5, green: 0.4, blue: 0.3, alpha: 1.0)
+        case .solarizedLight:
+            backgroundColor = NSColor(red: 0.992, green: 0.965, blue: 0.890, alpha: 1.0)  // #fdf6e3
+            labelColor = NSColor(red: 0.576, green: 0.631, blue: 0.631, alpha: 1.0)  // #93a1a1
+        case .solarizedDark:
+            backgroundColor = NSColor(red: 0.0, green: 0.169, blue: 0.212, alpha: 1.0)  // #002b36
+            labelColor = NSColor(red: 0.345, green: 0.431, blue: 0.459, alpha: 1.0)  // #586e75
+        case .nord:
+            backgroundColor = NSColor(red: 0.180, green: 0.204, blue: 0.251, alpha: 1.0)  // #2e3440
+            labelColor = NSColor(red: 0.482, green: 0.533, blue: 0.631, alpha: 1.0)  // #7b88a1
         case .system:
             return  // already handled above
         }
@@ -1460,7 +1554,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(exportPDFAction(_:)) ||
            menuItem.action == #selector(exportHTMLAction(_:)) ||
-           menuItem.action == #selector(shareDocument(_:)) {
+           menuItem.action == #selector(shareDocument(_:)) ||
+           menuItem.action == #selector(zoomIn(_:)) ||
+           menuItem.action == #selector(zoomOut(_:)) ||
+           menuItem.action == #selector(zoomReset(_:)) {
             return currentFileURL != nil
         }
         return true
@@ -1584,11 +1681,56 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
 
         return container
     }
+
+    // MARK: - Word Count
+
+    private func updateWordCount(_ markdown: String) {
+        // Strip frontmatter, code blocks, and HTML for a clean count
+        var text = markdown
+        // Strip YAML frontmatter
+        if text.hasPrefix("---\n") || text.hasPrefix("---\r") {
+            if let endRange = text.range(of: "\n---", range: text.index(text.startIndex, offsetBy: 3)..<text.endIndex) {
+                text = String(text[endRange.upperBound...])
+            }
+        }
+        // Strip code blocks
+        while let start = text.range(of: "```") {
+            if let end = text.range(of: "```", range: start.upperBound..<text.endIndex) {
+                text.removeSubrange(start.lowerBound..<end.upperBound)
+            } else {
+                break
+            }
+        }
+
+        let charCount = text.count
+        let words = text.split { $0.isWhitespace || $0.isNewline }
+        let wordCount = words.count
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        let wordStr = formatter.string(from: NSNumber(value: wordCount)) ?? "\(wordCount)"
+        let charStr = formatter.string(from: NSNumber(value: charCount)) ?? "\(charCount)"
+
+        wordCountLabel.stringValue = "\(wordStr) words  ·  \(charStr) characters"
+        wordCountLabel.isHidden = false
+    }
 }
 
 // MARK: - WKNavigationDelegate
 
 extension AppDelegate: WKNavigationDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.navigationType == .linkActivated,
+           let url = navigationAction.request.url,
+           let scheme = url.scheme,
+           scheme == "http" || scheme == "https" {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let startFade = { [weak self] in
             guard let self = self, let overlay = self.snapshotOverlay else { return }

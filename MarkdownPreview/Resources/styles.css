@@ -223,6 +223,39 @@ kbd {
     --table-border: #d4c4a8;
 }
 
+[data-theme="solarized light"] {
+    color-scheme: light;
+    --bg-color: #fdf6e3;
+    --text-color: #657b83;
+    --link-color: #268bd2;
+    --code-bg: #eee8d5;
+    --border-color: #d3cbb7;
+    --blockquote-color: #93a1a1;
+    --table-border: #d3cbb7;
+}
+
+[data-theme="solarized dark"] {
+    color-scheme: dark;
+    --bg-color: #002b36;
+    --text-color: #839496;
+    --link-color: #268bd2;
+    --code-bg: #073642;
+    --border-color: #094959;
+    --blockquote-color: #586e75;
+    --table-border: #094959;
+}
+
+[data-theme="nord"] {
+    color-scheme: dark;
+    --bg-color: #2e3440;
+    --text-color: #d8dee9;
+    --link-color: #88c0d0;
+    --code-bg: #3b4252;
+    --border-color: #4c566a;
+    --blockquote-color: #7b88a1;
+    --table-border: #4c566a;
+}
+
 /* Print styles */
 @media print {
     :root {

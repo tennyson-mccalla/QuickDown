@@ -146,6 +146,14 @@ class PreviewViewController: NSViewController, QLPreviewingController {
                     breaks: true
                 });
 
+                // Strip YAML frontmatter (--- delimited block at top of file)
+                const stripFrontmatter = (md) => {
+                    if (!md.startsWith('---\\n') && !md.startsWith('---\\r')) return md;
+                    const end = md.indexOf('\\n---', 3);
+                    if (end === -1) return md;
+                    return md.substring(end + 4).replace(/^\\r?\\n/, '');
+                };
+
                 // marked v15 treats ~single~ tildes as strikethrough, which is not standard GFM.
                 // Preprocess: protect lone tildes outside code blocks/spans by replacing with HTML entity.
                 const preprocessTildes = (md) => {
@@ -155,7 +163,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
                     ).join('');
                 };
 
-                const markdown = preprocessTildes(`\(escapedMarkdown)`);
+                const markdown = preprocessTildes(stripFrontmatter(`\(escapedMarkdown)`));
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)
@@ -168,6 +176,12 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
                 \(mermaidPostProcess)
                 \(mathRender)
+
+                // Make task list checkboxes interactive (visual toggle only)
+                document.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
+                    cb.removeAttribute('disabled');
+                    cb.style.cursor = 'pointer';
+                });
             </script>
         </body>
         </html>
