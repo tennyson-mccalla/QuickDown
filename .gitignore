@@ -30,4 +30,10 @@ xcuserdata/
 
 # SuperNavigator
 .context-markers/
-.agent/.nav-temp/
+
+# Internal docs (roadmap, competitive analysis, benchmarks)
+.agent/
+bench/
+
+# Git worktrees
+.worktrees/
