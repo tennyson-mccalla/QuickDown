@@ -1140,7 +1140,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         return """
         <!DOCTYPE html>
-        <html style="font-size: \(fontScale)em">
+        <html>
         <head>
             <meta charset="UTF-8">
             <style>\(stylesCSS)</style>
@@ -1154,7 +1154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             \(mermaidScript)
             \(katexScript)
         </head>
-        <body>
+        <body\(fontScale != 1.0 ? " style=\"font-size: \(fontScale * 16)px\"" : "")>
             <div id="content"></div>
             <script>
                 \(mermaidInit)
@@ -1478,7 +1478,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func applyFontScale() {
-        webView?.evaluateJavaScript("document.documentElement.style.fontSize = '\(fontScale)em'")
+        webView?.evaluateJavaScript("document.body.style.fontSize = '\(fontScale * 16)px'")
     }
 
     private func crossfadeTransition(then action: @escaping () -> Void) {
