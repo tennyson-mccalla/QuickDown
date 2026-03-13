@@ -37,3 +37,9 @@ bench/
 
 # Git worktrees
 .worktrees/
+
+# App Store assets (generated screenshots)
+app-store-assets/
+
+# Internal scripts
+scripts/

@@ -28,6 +28,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var fileDescriptor: Int32 = -1
     private var reloadDebounceWorkItem: DispatchWorkItem?
     private var lastContentHash: Int = 0
+    private let tempHTMLURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("quickdown-preview.html")
 
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
@@ -50,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // Word count
     private var wordCountLabel: NSTextField!
+    private var themeLabelColor: NSColor?  // nil = use system default
 
     // Track setup state for deferred file opens
     private var isSetupComplete = false
@@ -524,6 +527,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         webView = wv
     }
 
+    private func loadHTMLInWebView(_ html: String) throws {
+        try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+        webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+    }
+
     func openFile(_ url: URL) {
         // Safety check - window must exist
         guard window != nil else {
@@ -539,6 +547,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         currentFileURL = url
         window.title = "QuickDown — \(url.lastPathComponent)"
+        window.representedURL = url
 
         do {
             let content = try readFileWithFallbackEncoding(url: url)
@@ -550,17 +559,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
 
-            // Convert relative image/link paths to absolute for local file access
-            let baseDir = url.deletingLastPathComponent()
-            let processedContent = resolveRelativePaths(in: content, baseDirectory: baseDir)
+            let html = generateHTML(markdown: content)
 
-            let html = generateHTML(markdown: processedContent)
-
-            // Write to temp file and use loadFileURL to allow local resource access
-            let tempHTMLURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("quickdown-preview.html")
-            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+            try loadHTMLInWebView(html)
 
             webView?.isHidden = false
             dropZoneLabel.isHidden = true
@@ -684,19 +685,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
 
-                // Convert relative paths to absolute for local file access
-                let baseDir = url.deletingLastPathComponent()
-                let processedContent = self.resolveRelativePaths(in: content, baseDirectory: baseDir)
+                let html = self.generateHTML(markdown: content)
 
-                let html = self.generateHTML(markdown: processedContent)
-
-                // Write to temp file and use loadFileURL to allow local resource access
-                let tempHTMLURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("quickdown-preview.html")
-                try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+                try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
                 self.crossfadeTransition {
-                    self.webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: baseDir)
+                    self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
@@ -1209,52 +1203,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     cb.removeAttribute('disabled');
                     cb.style.cursor = 'pointer';
                 });
+
             </script>
         </body>
         </html>
         """
-    }
-
-    /// Convert relative image/link paths to absolute file:// URLs for local rendering
-    private func resolveRelativePaths(in markdown: String, baseDirectory: URL) -> String {
-        var result = markdown
-
-        // Resolve markdown image syntax: ![alt](relative/path)
-        let mdImagePattern = #"!\[([^\]]*)\]\(([^)]+)\)"#
-        if let regex = try? NSRegularExpression(pattern: mdImagePattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            let matches = regex.matches(in: result, range: range).reversed()
-            for match in matches {
-                guard let pathRange = Range(match.range(at: 2), in: result) else { continue }
-                let path = String(result[pathRange])
-                // Skip URLs (http://, https://, data:, file://)
-                if path.hasPrefix("http://") || path.hasPrefix("https://") ||
-                   path.hasPrefix("data:") || path.hasPrefix("file://") { continue }
-                let absoluteURL = baseDirectory.appendingPathComponent(path)
-                if FileManager.default.fileExists(atPath: absoluteURL.path) {
-                    result.replaceSubrange(pathRange, with: absoluteURL.absoluteString)
-                }
-            }
-        }
-
-        // Resolve HTML img src: src="relative/path"
-        let htmlSrcPattern = #"src\s*=\s*"([^"]+)""#
-        if let regex = try? NSRegularExpression(pattern: htmlSrcPattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            let matches = regex.matches(in: result, range: range).reversed()
-            for match in matches {
-                guard let pathRange = Range(match.range(at: 1), in: result) else { continue }
-                let path = String(result[pathRange])
-                if path.hasPrefix("http://") || path.hasPrefix("https://") ||
-                   path.hasPrefix("data:") || path.hasPrefix("file://") { continue }
-                let absoluteURL = baseDirectory.appendingPathComponent(path)
-                if FileManager.default.fileExists(atPath: absoluteURL.path) {
-                    result.replaceSubrange(pathRange, with: absoluteURL.absoluteString)
-                }
-            }
-        }
-
-        return result
     }
 
     private func escapeForJavaScript(_ string: String) -> String {
@@ -1513,6 +1466,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             searchBar.wantsLayer = false
             searchBar.layer?.backgroundColor = nil
             dropZoneLabel.textColor = .secondaryLabelColor
+            wordCountLabel.textColor = .tertiaryLabelColor
+            themeLabelColor = nil
+            tocTableView.reloadData()
             return
         }
 
@@ -1524,7 +1480,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             labelColor = NSColor(white: 0.5, alpha: 1.0)
         case .dark:
             backgroundColor = NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1.0)  // #0d1117
-            labelColor = NSColor(white: 0.6, alpha: 1.0)
+            labelColor = NSColor(white: 0.7, alpha: 1.0)
         case .sepia:
             backgroundColor = NSColor(red: 0.957, green: 0.925, blue: 0.847, alpha: 1.0)  // #f4ecd8
             labelColor = NSColor(red: 0.5, green: 0.4, blue: 0.3, alpha: 1.0)
@@ -1533,10 +1489,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             labelColor = NSColor(red: 0.576, green: 0.631, blue: 0.631, alpha: 1.0)  // #93a1a1
         case .solarizedDark:
             backgroundColor = NSColor(red: 0.0, green: 0.169, blue: 0.212, alpha: 1.0)  // #002b36
-            labelColor = NSColor(red: 0.345, green: 0.431, blue: 0.459, alpha: 1.0)  // #586e75
+            labelColor = NSColor(red: 0.514, green: 0.580, blue: 0.588, alpha: 1.0)  // #839496 (base0)
         case .nord:
             backgroundColor = NSColor(red: 0.180, green: 0.204, blue: 0.251, alpha: 1.0)  // #2e3440
-            labelColor = NSColor(red: 0.482, green: 0.533, blue: 0.631, alpha: 1.0)  // #7b88a1
+            labelColor = NSColor(red: 0.616, green: 0.663, blue: 0.749, alpha: 1.0)  // #9da9bf (snow storm 0 dimmed)
         case .system:
             return  // already handled above
         }
@@ -1547,6 +1503,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         searchBar.wantsLayer = true
         searchBar.layer?.backgroundColor = backgroundColor.cgColor
         dropZoneLabel.textColor = labelColor
+        wordCountLabel.textColor = labelColor
+        themeLabelColor = labelColor
+        tocTableView.reloadData()
     }
 
     // MARK: - Menu Validation
@@ -1665,6 +1624,9 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
         let cell = NSTextField(labelWithString: item.title)
         cell.lineBreakMode = .byTruncatingTail
         cell.font = NSFont.systemFont(ofSize: 12)
+        if let color = themeLabelColor {
+            cell.textColor = color
+        }
 
         // Indent based on heading level
         let indent = CGFloat((item.level - 1) * 12)
@@ -1720,14 +1682,19 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
 
 extension AppDelegate: WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if navigationAction.navigationType == .linkActivated,
-           let url = navigationAction.request.url,
-           let scheme = url.scheme,
-           scheme == "http" || scheme == "https" {
+        guard navigationAction.navigationType == .linkActivated,
+              let url = navigationAction.request.url,
+              let scheme = url.scheme else {
+            decisionHandler(.allow)
+            return
+        }
+
+        if scheme == "http" || scheme == "https" || scheme == "mailto" {
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
             return
         }
+
         decisionHandler(.allow)
     }
 
