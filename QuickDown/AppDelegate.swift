@@ -145,6 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         splitView = NSSplitView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
         splitView.isVertical = true
         splitView.dividerStyle = .thin
+        splitView.delegate = self
         splitView.autoresizingMask = [.width, .height]
 
         // Create TOC sidebar
@@ -1722,6 +1723,22 @@ extension AppDelegate: WKNavigationDelegate {
         } else {
             startFade()
         }
+    }
+}
+
+// MARK: - NSSplitViewDelegate
+
+extension AppDelegate: NSSplitViewDelegate {
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        return 120  // Minimum sidebar width
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        return min(300, splitView.bounds.width * 0.35)  // Max 300px or 35% of window
+    }
+
+    func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+        return subview == tocScrollView
     }
 }
 
