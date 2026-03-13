@@ -41,5 +41,15 @@ bench/
 # App Store assets (generated screenshots)
 app-store-assets/
 
-# Internal scripts
+# Internal scripts (keep fix_dmg_background.sh tracked via negation)
 scripts/
+!scripts/fix_dmg_background.sh
+
+# Internal docs and files
+CLAUDE.md
+DEVLOG.md
+docs/
+performance-tests/
+project.yml
+dmg-bg-analysis.png
+test-*.md
