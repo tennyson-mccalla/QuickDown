@@ -1295,7 +1295,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         fileMenu.addItem(shareItem)
 
         fileMenu.addItem(NSMenuItem.separator())
-        fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let closeTabItem = NSMenuItem(title: "Close Tab", action: #selector(closeActiveTab(_:)), keyEquivalent: "w")
+        closeTabItem.target = self
+        fileMenu.addItem(closeTabItem)
+
+        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(selectNextTab(_:)), keyEquivalent: "}")
+        nextTabItem.target = self
+        nextTabItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(nextTabItem)
+
+        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(selectPreviousTab(_:)), keyEquivalent: "{")
+        prevTabItem.target = self
+        prevTabItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(prevTabItem)
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
 
@@ -1560,6 +1572,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
            menuItem.action == #selector(zoomReset(_:)) {
             return currentFileURL != nil
         }
+        if menuItem.action == #selector(selectNextTab(_:)) ||
+           menuItem.action == #selector(selectPreviousTab(_:)) {
+            return openFiles.count > 1
+        }
+        if menuItem.action == #selector(closeActiveTab(_:)) {
+            menuItem.title = openFiles.isEmpty ? "Close Window" : "Close Tab"
+            return true
+        }
         return true
     }
 
@@ -1734,7 +1754,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func closeTab(at index: Int) {
-        // Implemented in Task 6
+        guard index >= 0 && index < openFiles.count else { return }
+
+        openFiles.remove(at: index)
+
+        if openFiles.isEmpty {
+            // No more tabs — return to drop zone
+            stopWatchingFile()
+            webView?.isHidden = true
+            dropZoneLabel.isHidden = false
+            window.title = "QuickDown"
+            window.representedURL = nil
+            wordCountLabel.isHidden = true
+            tocItems = []
+            tocTableView.reloadData()
+            activeFileIndex = 0
+            updateTabBarVisibility()
+            return
+        }
+
+        // Adjust active index
+        if activeFileIndex >= openFiles.count {
+            activeFileIndex = openFiles.count - 1
+        } else if index < activeFileIndex {
+            activeFileIndex -= 1
+        }
+
+        loadTab(at: activeFileIndex)
+    }
+
+    @objc func closeActiveTab(_ sender: Any?) {
+        if openFiles.isEmpty {
+            window.performClose(sender)
+        } else {
+            closeTab(at: activeFileIndex)
+        }
+    }
+
+    @objc func selectNextTab(_ sender: Any?) {
+        guard openFiles.count > 1 else { return }
+        let next = (activeFileIndex + 1) % openFiles.count
+        switchToTab(next)
+    }
+
+    @objc func selectPreviousTab(_ sender: Any?) {
+        guard openFiles.count > 1 else { return }
+        let prev = (activeFileIndex - 1 + openFiles.count) % openFiles.count
+        switchToTab(prev)
     }
 }
 
