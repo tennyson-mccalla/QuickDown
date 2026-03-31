@@ -1779,7 +1779,35 @@ extension AppDelegate: WKNavigationDelegate {
             return
         }
 
+        // External links — open in default browser
         if scheme == "http" || scheme == "https" || scheme == "mailto" {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // Relative or local file:// links to .md files — open in QuickDown
+        if scheme == "file" {
+            let ext = url.pathExtension.lowercased()
+            let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mkd"]
+            if markdownExtensions.contains(ext) {
+                let resolvedURL: URL
+                if url.path.hasPrefix("/") {
+                    resolvedURL = url
+                } else if let baseDir = currentAccessibleDirectory {
+                    resolvedURL = baseDir.appendingPathComponent(url.path)
+                } else {
+                    resolvedURL = url
+                }
+
+                if FileManager.default.fileExists(atPath: resolvedURL.path) {
+                    openFile(resolvedURL.standardized)
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
+
+            // Non-.md file links — let the system handle them
             NSWorkspace.shared.open(url)
             decisionHandler(.cancel)
             return
