@@ -1669,8 +1669,76 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
+    /// Captures the current tab's transient state (scroll position) before switching away.
+    private func saveCurrentTabState(completion: @escaping () -> Void) {
+        guard !openFiles.isEmpty else {
+            completion()
+            return
+        }
+
+        webView?.evaluateJavaScript("window.scrollY") { [weak self] scrollY, _ in
+            guard let self = self, !self.openFiles.isEmpty else {
+                completion()
+                return
+            }
+            if let y = scrollY as? Double {
+                self.openFiles[self.activeFileIndex].scrollY = y
+            }
+            completion()
+        }
+    }
+
+    /// Loads a tab's content into the WebView and restores its state.
+    private func loadTab(at index: Int) {
+        guard index >= 0 && index < openFiles.count else { return }
+
+        activeFileIndex = index
+        let file = openFiles[index]
+
+        window.title = "QuickDown — \(file.url.lastPathComponent)"
+        window.representedURL = file.url
+
+        // Restore per-tab sidebar state
+        isSidebarVisible = file.sidebarVisible
+        UserDefaults.standard.set(isSidebarVisible, forKey: sidebarVisibleKey)
+        tocScrollView.isHidden = !isSidebarVisible
+        splitView.setPosition(isSidebarVisible ? 200 : 0, ofDividerAt: 0)
+
+        // Restore per-tab font scale
+        fontScale = file.fontScale
+
+        // Stop watching previous file, start watching this one
+        stopWatchingFile()
+        startWatchingFile(file.url)
+
+        do {
+            let content = try readFileWithFallbackEncoding(url: file.url)
+            openFiles[index].contentHash = content.hashValue
+
+            tocItems = parseTOC(from: content)
+            tocTableView.reloadData()
+            updateWordCount(content)
+
+            let html = generateHTML(markdown: content)
+            pendingScrollRestoreY = file.scrollY
+            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+            crossfadeTransition {
+                self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+            }
+        } catch {
+            showError("Failed to load file: \(error.localizedDescription)")
+        }
+
+        // Update tab bar
+        updateTabBarVisibility()
+    }
+
     private func switchToTab(_ index: Int) {
-        // Implemented in Task 4
+        guard index != activeFileIndex, index >= 0, index < openFiles.count else { return }
+
+        saveCurrentTabState { [weak self] in
+            self?.loadTab(at: index)
+        }
     }
 
     private func closeTab(at index: Int) {
