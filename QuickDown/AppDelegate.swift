@@ -311,6 +311,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         isSidebarVisible.toggle()
         UserDefaults.standard.set(isSidebarVisible, forKey: sidebarVisibleKey)
 
+        // Save to active tab
+        if !openFiles.isEmpty {
+            openFiles[activeFileIndex].sidebarVisible = isSidebarVisible
+        }
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.allowsImplicitAnimation = true
@@ -1470,16 +1475,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     /// the overlay out in didFinish once new content is ready.
     @objc func zoomIn(_ sender: Any?) {
         fontScale += fontScaleStep
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
     @objc func zoomOut(_ sender: Any?) {
         fontScale -= fontScaleStep
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
     @objc func zoomReset(_ sender: Any?) {
         fontScale = 1.0
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
