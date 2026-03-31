@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var pendingFileURL: URL?
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
+    private var currentAccessibleDirectory: URL?
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -529,9 +530,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         webView = wv
     }
 
-    private func loadHTMLInWebView(_ html: String) throws {
+    private func loadHTMLInWebView(_ html: String, allowingAccessTo directory: URL? = nil) throws {
         try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-        webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+
+        if let dir = directory {
+            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: dir)
+        } else {
+            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+        }
     }
 
     func openFile(_ url: URL) {
@@ -562,8 +568,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocTableView.reloadData()
 
             let html = generateHTML(markdown: content)
-
-            try loadHTMLInWebView(html)
+            currentAccessibleDirectory = accessibleParentDirectory(for: url)
+            try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
 
             webView?.isHidden = false
             dropZoneLabel.isHidden = true
@@ -692,7 +698,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
                 self.crossfadeTransition {
-                    self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+                    if let dir = self.currentAccessibleDirectory {
+                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: dir)
+                    } else {
+                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+                    }
                 }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
