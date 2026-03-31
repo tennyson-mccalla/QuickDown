@@ -26,8 +26,14 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         do {
             let markdownContent = try readFileWithFallbackEncoding(url: url)
-            let html = generateHTML(markdown: markdownContent)
-            webView.loadHTMLString(html, baseURL: nil)
+            let baseDirectory = url.deletingLastPathComponent()
+            let html = generateHTML(markdown: markdownContent, baseDirectoryURL: baseDirectory)
+
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("quickdown-ql-preview.html")
+            try html.write(to: tempURL, atomically: true, encoding: .utf8)
+            webView.loadFileURL(tempURL, allowingReadAccessTo: baseDirectory)
+
             handler(nil)
         } catch {
             handler(error)
@@ -67,8 +73,15 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         return content
     }
 
-    private func generateHTML(markdown: String) -> String {
+    private func generateHTML(markdown: String, baseDirectoryURL: URL? = nil) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
+
+        let baseTag: String
+        if let baseDir = baseDirectoryURL {
+            baseTag = "<base href=\"\(baseDir.absoluteString)\">"
+        } else {
+            baseTag = ""
+        }
 
         // Detect which features are needed
         let needsMermaid = markdown.contains("```mermaid")
@@ -126,6 +139,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         <html>
         <head>
             <meta charset="UTF-8">
+            \(baseTag)
             <style>\(stylesCSS)</style>
             \(katexStyleTag)
             <style media="(prefers-color-scheme: light)">\(githubCSS)</style>
