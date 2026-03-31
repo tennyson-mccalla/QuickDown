@@ -576,53 +576,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     func openFile(_ url: URL) {
-        // Safety check - window must exist
         guard window != nil else {
             NSLog("QuickDown: openFile called but window is nil")
             return
         }
 
-        // Stop watching the previous file
-        stopWatchingFile()
+        // If this file is already open, switch to its tab
+        if let existingIndex = openFiles.firstIndex(where: { $0.url.path == url.path }) {
+            switchToTab(existingIndex)
+            return
+        }
 
-        // Lazily create WebView on first file open
         ensureWebViewExists()
 
-        // Add to open files or switch to existing tab
-        if let existingIndex = openFiles.firstIndex(where: { $0.url == url }) {
-            activeFileIndex = existingIndex
-        } else {
-            openFiles.append(FileState(url: url))
-            activeFileIndex = openFiles.count - 1
+        // Save current tab state before adding new tab
+        let addAndLoad = { [weak self] in
+            guard let self = self else { return }
+
+            // Create new file state, inheriting current sidebar/font settings
+            var newFile = FileState(url: url)
+            newFile.sidebarVisible = self.isSidebarVisible
+            newFile.fontScale = self.fontScale
+
+            // Add tab after the current active tab
+            let insertIndex = self.openFiles.isEmpty ? 0 : self.activeFileIndex + 1
+            self.openFiles.insert(newFile, at: insertIndex)
+            self.activeFileIndex = insertIndex
+
+            self.loadTab(at: insertIndex)
+
+            self.webView?.isHidden = false
+            self.dropZoneLabel.isHidden = true
+
+            self.addToRecentFiles(url)
         }
-        window.title = "QuickDown — \(url.lastPathComponent)"
-        window.representedURL = url
 
-        do {
-            let content = try readFileWithFallbackEncoding(url: url)
-
-            // Store content hash for change detection
-            lastContentHash = content.hashValue
-
-            // Parse TOC from markdown
-            tocItems = parseTOC(from: content)
-            tocTableView.reloadData()
-
-            let html = generateHTML(markdown: content)
-
-            try loadHTMLInWebView(html)
-
-            webView?.isHidden = false
-            dropZoneLabel.isHidden = true
-            updateWordCount(content)
-
-            // Start watching for changes
-            startWatchingFile(url)
-
-            // Add to recent files
-            addToRecentFiles(url)
-        } catch {
-            showError("Failed to open file: \(error.localizedDescription)")
+        if openFiles.isEmpty {
+            addAndLoad()
+        } else {
+            saveCurrentTabState { addAndLoad() }
         }
     }
 
@@ -713,23 +705,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func reloadCurrentFile() {
-        guard let url = currentFileURL else { return }
+        guard !openFiles.isEmpty else { return }
+        let url = openFiles[activeFileIndex].url
 
-        // Save scroll position before reload
         webView?.evaluateJavaScript("window.scrollY") { [weak self] (scrollY, _) in
-            guard let self = self else { return }
+            guard let self = self, !self.openFiles.isEmpty else { return }
 
             do {
                 let content = try self.readFileWithFallbackEncoding(url: url)
 
-                // Skip re-render if content hasn't changed
                 let contentHash = content.hashValue
-                if contentHash == self.lastContentHash {
+                if contentHash == self.openFiles[self.activeFileIndex].contentHash {
                     return
                 }
-                self.lastContentHash = contentHash
+                self.openFiles[self.activeFileIndex].contentHash = contentHash
 
-                // Update TOC and word count
                 self.tocItems = self.parseTOC(from: content)
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
@@ -1400,12 +1390,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         panel.allowedContentTypes = [.init(filenameExtension: "md")!,
                                       .init(filenameExtension: "markdown")!,
                                       .plainText]
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
 
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.openFile(url)
+            guard response == .OK else { return }
+            for url in panel.urls {
+                self?.openFile(url)
+            }
         }
     }
 
