@@ -85,8 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var snapshotOverlay: NSImageView?
 
     // Tab bar (added in Task 2)
-    // private var tabBarView: PillTabBarView!
-    // private var tabBarHeightConstraint: NSLayoutConstraint!
+    private var tabBarView: PillTabBarView!
+    private var tabBarHeightConstraint: NSLayoutConstraint!
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -215,6 +215,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(searchBar)
 
+        // Setup tab bar (hidden until 2+ files are open)
+        tabBarView = PillTabBarView(frame: NSRect(x: 0, y: 0, width: 900, height: 34))
+        tabBarView.translatesAutoresizingMaskIntoConstraints = false
+        tabBarView.delegate = self
+        tabBarView.isHidden = true
+        containerView.addSubview(tabBarView)
+
+        tabBarHeightConstraint = tabBarView.heightAnchor.constraint(equalToConstant: 0)
+
         splitView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(splitView)
 
@@ -235,7 +244,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             searchBarHeightConstraint,
 
-            splitView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            tabBarView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            tabBarView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            tabBarView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            tabBarHeightConstraint,
+
+            splitView.topAnchor.constraint(equalTo: tabBarView.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             splitView.bottomAnchor.constraint(equalTo: wordCountLabel.topAnchor),
@@ -1644,6 +1658,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             error.pointee = "Failed to create preview: \(writeError.localizedDescription)" as NSString
         }
     }
+
+    private func updateTabBarVisibility() {
+        let shouldShow = openFiles.count > 1
+        tabBarView.isHidden = !shouldShow
+        tabBarHeightConstraint.constant = shouldShow ? 34 : 0
+
+        if shouldShow {
+            tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
+        }
+    }
+
+    private func switchToTab(_ index: Int) {
+        // Implemented in Task 4
+    }
+
+    private func closeTab(at index: Int) {
+        // Implemented in Task 6
+    }
 }
 
 // MARK: - NSTableViewDataSource & NSTableViewDelegate
@@ -1773,6 +1805,22 @@ extension AppDelegate: NSSplitViewDelegate {
 
     func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
         return subview == tocScrollView
+    }
+}
+
+// MARK: - PillTabBarDelegate
+
+extension AppDelegate: PillTabBarDelegate {
+    func tabBar(_ tabBar: PillTabBarView, didSelectTabAt index: Int) {
+        switchToTab(index)
+    }
+
+    func tabBar(_ tabBar: PillTabBarView, didCloseTabAt index: Int) {
+        closeTab(at: index)
+    }
+
+    func tabBar(_ tabBar: PillTabBarView, didClickActiveTabAt index: Int) {
+        // Raw mode toggle — implemented in feature/raw-mode branch
     }
 }
 
