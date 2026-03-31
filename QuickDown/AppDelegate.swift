@@ -33,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
+    private let directoryBookmarksKey = "DirectoryBookmarks"
     private let maxRecentFiles = 10
 
     // TOC sidebar
@@ -815,6 +816,76 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     @objc private func clearRecentFiles(_ sender: Any?) {
         UserDefaults.standard.removeObject(forKey: recentFilesKey)
         updateRecentFilesMenu()
+    }
+
+    // MARK: - Directory Access (Sandbox)
+
+    /// Creates and stores a security-scoped bookmark for the parent directory of the given file URL.
+    private func bookmarkParentDirectory(of fileURL: URL) {
+        let directoryURL = fileURL.deletingLastPathComponent()
+
+        do {
+            let bookmarkData = try directoryURL.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+
+            var bookmarks = getDirectoryBookmarks()
+            bookmarks[directoryURL.path] = bookmarkData
+            UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
+        } catch {
+            NSLog("QuickDown: Could not bookmark directory \(directoryURL.path): \(error)")
+        }
+    }
+
+    private func getDirectoryBookmarks() -> [String: Data] {
+        return UserDefaults.standard.dictionary(forKey: directoryBookmarksKey) as? [String: Data] ?? [:]
+    }
+
+    /// Resolves and begins accessing the security-scoped bookmark for the given directory.
+    /// Returns the directory URL if access was granted, nil otherwise.
+    private func resolveDirectoryBookmark(for directoryPath: String) -> URL? {
+        let bookmarks = getDirectoryBookmarks()
+        guard let data = bookmarks[directoryPath] else { return nil }
+
+        var isStale = false
+        do {
+            let url = try URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+
+            if isStale {
+                if let newData = try? url.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                ) {
+                    var bookmarks = getDirectoryBookmarks()
+                    bookmarks[directoryPath] = newData
+                    UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
+                }
+            }
+
+            guard url.startAccessingSecurityScopedResource() else {
+                return nil
+            }
+
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Returns the parent directory URL with sandbox access, either from the current
+    /// sandbox grant (NSOpenPanel) or from a stored bookmark.
+    private func accessibleParentDirectory(for fileURL: URL) -> URL? {
+        let dirURL = fileURL.deletingLastPathComponent()
+        bookmarkParentDirectory(of: fileURL)
+        return resolveDirectoryBookmark(for: dirURL.path) ?? dirURL
     }
 
     private func readFileWithFallbackEncoding(url: URL) throws -> String {
