@@ -17,17 +17,41 @@ struct TOCItem {
     let id: String
 }
 
+struct FileState {
+    let url: URL
+    var contentHash: Int = 0
+    var scrollY: Double = 0
+    var sidebarVisible: Bool = false
+    var fontScale: Double = 1.0
+    var isRawMode: Bool = false
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
 
     var window: NSWindow!
     var webView: WKWebView?  // Lazily initialized when first file is opened
     var dropZoneLabel: NSTextField!
     private var mainContentView: DropView!  // Container for lazy WebView
-    var currentFileURL: URL?
+
+    // Tab state
+    private var openFiles: [FileState] = []
+    private var activeFileIndex: Int = 0
+
+    // Convenience accessor for the active file (nil when no files open)
+    var currentFileURL: URL? {
+        guard !openFiles.isEmpty else { return nil }
+        return openFiles[activeFileIndex].url
+    }
+
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private var reloadDebounceWorkItem: DispatchWorkItem?
-    private var lastContentHash: Int = 0
+
+    // Backward-compat: reads/writes active file's content hash
+    private var lastContentHash: Int {
+        get { openFiles.isEmpty ? 0 : openFiles[activeFileIndex].contentHash }
+        set { if !openFiles.isEmpty { openFiles[activeFileIndex].contentHash = newValue } }
+    }
     private let tempHTMLURL = FileManager.default.temporaryDirectory
         .appendingPathComponent("quickdown-preview.html")
 
@@ -59,6 +83,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var pendingFileURL: URL?
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
+
+    // Tab bar (added in Task 2)
+    // private var tabBarView: PillTabBarView!
+    // private var tabBarHeightConstraint: NSLayoutConstraint!
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -546,7 +574,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Lazily create WebView on first file open
         ensureWebViewExists()
 
-        currentFileURL = url
+        // Add to open files or switch to existing tab
+        if let existingIndex = openFiles.firstIndex(where: { $0.url == url }) {
+            activeFileIndex = existingIndex
+        } else {
+            openFiles.append(FileState(url: url))
+            activeFileIndex = openFiles.count - 1
+        }
         window.title = "QuickDown — \(url.lastPathComponent)"
         window.representedURL = url
 
