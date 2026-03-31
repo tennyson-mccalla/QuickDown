@@ -567,8 +567,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
 
-            let html = generateHTML(markdown: content)
             currentAccessibleDirectory = accessibleParentDirectory(for: url)
+            let html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
             try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
 
             webView?.isHidden = false
@@ -693,7 +693,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
 
-                let html = self.generateHTML(markdown: content)
+                let html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
@@ -1154,8 +1154,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         return content
     }
 
-    private func generateHTML(markdown: String) -> String {
+    private func generateHTML(markdown: String, baseDirectoryURL: URL? = nil) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
+
+        let baseTag: String
+        if let baseDir = baseDirectoryURL {
+            baseTag = "<base href=\"\(baseDir.absoluteString)\">"
+        } else {
+            baseTag = ""
+        }
 
         // Detect which features are needed (lazy loading)
         let needsMermaid = markdown.contains("```mermaid")
@@ -1219,6 +1226,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         <html>
         <head>
             <meta charset="UTF-8">
+            \(baseTag)
             <style>\(stylesCSS)</style>
             \(katexStyleTag)
             <style id="hl-light">\(githubCSS)</style>
