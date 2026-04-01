@@ -611,12 +611,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
 
-            // Only request directory access if the markdown has relative references
-            if contentHasRelativePaths(content) {
-                currentAccessibleDirectory = accessibleParentDirectory(for: url)
-            } else {
-                currentAccessibleDirectory = nil
-            }
+            // Try to get directory access for relative path resolution.
+            // Use saved bookmark silently; only prompt if there are relative images.
+            currentAccessibleDirectory = accessibleParentDirectory(for: url, promptIfNeeded: contentHasRelativePaths(content))
             let html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
             try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
 
@@ -919,7 +916,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     /// Returns the parent directory URL with sandbox access, either from a stored
     /// bookmark or by prompting the user to grant access via NSOpenPanel.
-    private func accessibleParentDirectory(for fileURL: URL) -> URL? {
+    /// When `promptIfNeeded` is false, only uses saved bookmarks (no UI prompt).
+    private func accessibleParentDirectory(for fileURL: URL, promptIfNeeded: Bool = true) -> URL? {
         let dirURL = fileURL.deletingLastPathComponent()
 
         // Stop accessing the previous directory
@@ -932,8 +930,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             return resolved
         }
 
-        // No bookmark — prompt user to grant directory access
-        if let granted = requestDirectoryAccess(for: dirURL) {
+        // No bookmark — prompt user only if requested (i.e., file has relative images)
+        if promptIfNeeded, let granted = requestDirectoryAccess(for: dirURL) {
             currentAccessedDirectoryURL = granted
             return granted
         }
