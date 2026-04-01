@@ -69,7 +69,7 @@ struct FileState {
     var isRawMode: Bool = false
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate, NSWindowDelegate {
 
     var window: NSWindow!
     var webView: WKWebView?  // Lazily initialized when first file is opened
@@ -127,9 +127,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var currentAccessibleDirectory: URL?
     private var currentAccessedDirectoryURL: URL?
 
-    // Tab bar (added in Task 2)
+    // Tab bar (floating overlay)
     private var tabBarView: PillTabBarView!
-    private var tabBarHeightConstraint: NSLayoutConstraint!
+    private var tabBarTrackingArea: NSTrackingArea?
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -215,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         window.center()
         window.setFrameAutosaveName("MainWindow")
         window.minSize = NSSize(width: 500, height: 300)
+        window.delegate = self
 
         // Create split view
         splitView = NSSplitView(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
@@ -262,17 +263,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(searchBar)
 
-        // Setup tab bar (hidden until 2+ files are open)
-        tabBarView = PillTabBarView(frame: NSRect(x: 0, y: 0, width: 900, height: 34))
-        tabBarView.translatesAutoresizingMaskIntoConstraints = false
-        tabBarView.delegate = self
-        tabBarView.isHidden = true
-        containerView.addSubview(tabBarView)
-
-        tabBarHeightConstraint = tabBarView.heightAnchor.constraint(equalToConstant: 0)
-
         splitView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(splitView)
+
+        // Setup tab bar as floating overlay on top of content
+        tabBarView = PillTabBarView(frame: NSRect(x: 0, y: 0, width: 400, height: 34))
+        tabBarView.translatesAutoresizingMaskIntoConstraints = false
+        tabBarView.delegate = self
+        tabBarView.alphaValue = 0
+        tabBarView.isHidden = true
+        tabBarView.onMouseInside = { [weak self] inside in
+            if inside {
+                self?.showTabBar()
+            } else {
+                self?.hideTabBar()
+            }
+        }
+        containerView.addSubview(tabBarView, positioned: .above, relativeTo: splitView)
 
         // Word/character count status bar
         wordCountLabel = NSTextField(labelWithString: "")
@@ -291,15 +298,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             searchBarHeightConstraint,
 
-            tabBarView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
-            tabBarView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            tabBarView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            tabBarHeightConstraint,
-
-            splitView.topAnchor.constraint(equalTo: tabBarView.bottomAnchor),
+            splitView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             splitView.bottomAnchor.constraint(equalTo: wordCountLabel.topAnchor),
+
+            // Tab bar floats as overlay, pinned to top-center
+            tabBarView.topAnchor.constraint(equalTo: splitView.topAnchor, constant: 8),
+            tabBarView.centerXAnchor.constraint(equalTo: splitView.centerXAnchor),
+            tabBarView.heightAnchor.constraint(equalToConstant: 34),
 
             wordCountLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
             wordCountLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
@@ -1878,9 +1885,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             wordCountLabel.textColor = .tertiaryLabelColor
             themeLabelColor = nil
             tocTableView.reloadData()
-            tabBarView.pillBackgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.3)
-            tabBarView.activeSegmentColor = NSColor.controlAccentColor.withAlphaComponent(0.15)
-            tabBarView.textColor = .labelColor
+            tabBarView.barBackgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.85)
+            tabBarView.activeSegmentColor = .controlAccentColor
+            tabBarView.textColor = .secondaryLabelColor
+            tabBarView.activeTextColor = .white
             tabBarView.separatorColor = .separatorColor
             return
         }
@@ -1919,9 +1927,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         wordCountLabel.textColor = labelColor
         themeLabelColor = labelColor
         tocTableView.reloadData()
-        tabBarView.pillBackgroundColor = backgroundColor.blended(withFraction: 0.1, of: labelColor) ?? backgroundColor
-        tabBarView.activeSegmentColor = backgroundColor.blended(withFraction: 0.2, of: labelColor) ?? backgroundColor
+        tabBarView.barBackgroundColor = backgroundColor.withAlphaComponent(0.85)
+        tabBarView.activeSegmentColor = .controlAccentColor
         tabBarView.textColor = labelColor
+        tabBarView.activeTextColor = .white
         tabBarView.separatorColor = labelColor.withAlphaComponent(0.2)
     }
 
@@ -2045,13 +2054,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private func updateTabBarVisibility() {
         let shouldShow = openFiles.count > 1
         tabBarView.isHidden = !shouldShow
-        tabBarHeightConstraint.constant = shouldShow ? 34 : 0
 
         if shouldShow {
             tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
             tabBarView.activeTabRawMode = !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode
             tabBarView.scrollToActiveTab()
+        } else {
+            tabBarView.alphaValue = 0
         }
+
+        updateTabBarTrackingArea()
+    }
+
+    private func updateTabBarTrackingArea() {
+        // Remove existing tracking area
+        if let existing = tabBarTrackingArea {
+            splitView.removeTrackingArea(existing)
+            tabBarTrackingArea = nil
+        }
+
+        guard openFiles.count > 1 else { return }
+
+        // Track the top 50px of the split view for mouse proximity
+        let trackingRect = NSRect(x: 0, y: splitView.bounds.height - 50, width: splitView.bounds.width, height: 50)
+        let area = NSTrackingArea(
+            rect: trackingRect,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self, userInfo: ["tabBarHover": true]
+        )
+        splitView.addTrackingArea(area)
+        tabBarTrackingArea = area
     }
 
     /// Captures the current tab's transient state (scroll position) before switching away.
@@ -2371,6 +2403,43 @@ extension AppDelegate: PillTabBarDelegate {
 
     func tabBar(_ tabBar: PillTabBarView, didClickActiveTabAt index: Int) {
         toggleRawMode()
+    }
+}
+
+// MARK: - Tab Bar Auto-Hide
+
+extension AppDelegate {
+    override func mouseEntered(with event: NSEvent) {
+        guard let userData = event.trackingArea?.userInfo as? [String: Bool],
+              userData["tabBarHover"] == true else { return }
+        showTabBar()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard let userData = event.trackingArea?.userInfo as? [String: Bool],
+              userData["tabBarHover"] == true else { return }
+        hideTabBar()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        updateTabBarTrackingArea()
+    }
+
+    private func showTabBar() {
+        guard !tabBarView.isHidden else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            tabBarView.animator().alphaValue = 1
+        }
+    }
+
+    private func hideTabBar() {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            tabBarView.animator().alphaValue = 0
+        }
     }
 }
 

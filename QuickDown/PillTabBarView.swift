@@ -11,14 +11,17 @@ class PillTabBarView: NSView {
     private var segments: [TabSegment] = []
     private(set) var activeIndex: Int = 0
 
-    var pillBackgroundColor: NSColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5) {
+    var barBackgroundColor: NSColor = NSColor.windowBackgroundColor {
         didSet { needsDisplay = true }
     }
-    var activeSegmentColor: NSColor = NSColor.controlAccentColor.withAlphaComponent(0.2) {
+    var activeSegmentColor: NSColor = NSColor.controlAccentColor {
         didSet { needsDisplay = true }
     }
     var textColor: NSColor = .labelColor {
         didSet { segments.forEach { $0.textColor = textColor } }
+    }
+    var activeTextColor: NSColor = .white {
+        didSet { updateSegmentColors() }
     }
     var separatorColor: NSColor = NSColor.separatorColor {
         didSet { needsDisplay = true }
@@ -31,7 +34,12 @@ class PillTabBarView: NSView {
     private let stackView: NSStackView
     private let segmentHeight: CGFloat = 26
     private let barPadding: CGFloat = 4
-    private let capsuleRadius: CGFloat = 13
+    private let cornerRadius: CGFloat = 6
+    private var hoverTrackingArea: NSTrackingArea?
+    private var widthConstraint: NSLayoutConstraint?
+
+    /// Called when mouse enters/exits the tab bar itself (for auto-hide coordination)
+    var onMouseInside: ((Bool) -> Void)?
 
     override init(frame frameRect: NSRect) {
         scrollView = NSScrollView(frame: .zero)
@@ -49,7 +57,14 @@ class PillTabBarView: NSView {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.masksToBounds = true
+        layer?.masksToBounds = false
+
+        // Shadow for floating appearance
+        shadow = NSShadow()
+        layer?.shadowColor = NSColor.black.withAlphaComponent(0.3).cgColor
+        layer?.shadowOpacity = 1
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = NSSize(width: 0, height: -2)
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasHorizontalScroller = false
@@ -64,65 +79,61 @@ class PillTabBarView: NSView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stackView
 
-        // All internal constraints at defaultHigh so they yield
-        // when the bar is collapsed to height 0 (single-file mode)
-        let constraints: [(NSLayoutConstraint, NSLayoutConstraint.Priority)] = [
-            (scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding), .defaultHigh),
-            (scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding), .defaultHigh),
-            (scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding), .defaultHigh),
-            (scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding), .defaultHigh),
-            (stackView.topAnchor.constraint(equalTo: scrollView.topAnchor), .defaultHigh),
-            (stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor), .defaultHigh),
-            (stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor), .defaultHigh),
-            (stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor), .defaultHigh),
-        ]
-
-        for (constraint, priority) in constraints {
-            constraint.priority = priority
-            constraint.isActive = true
-        }
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding),
+            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding),
+            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor),
+        ])
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        // Draw the continuous capsule background
-        let pillRect = bounds.insetBy(dx: 2, dy: 2)
-        let capsulePath = NSBezierPath(roundedRect: pillRect, xRadius: capsuleRadius, yRadius: capsuleRadius)
-        pillBackgroundColor.setFill()
-        capsulePath.fill()
+        let barRect = bounds
+        let barPath = NSBezierPath(roundedRect: barRect, xRadius: cornerRadius, yRadius: cornerRadius)
 
-        // Draw the active segment highlight inside the capsule
+        // Background with subtle border
+        barBackgroundColor.setFill()
+        barPath.fill()
+
+        NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
+        barPath.lineWidth = 0.5
+        barPath.stroke()
+
+        // Active segment highlight
         if activeIndex < segments.count {
             let segment = segments[activeIndex]
-            // Convert segment frame to our coordinate space
             guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { return }
 
-            // Clip highlight to the capsule shape
             NSGraphicsContext.saveGraphicsState()
-            capsulePath.addClip()
+            barPath.addClip()
 
             let highlightColor = activeTabRawMode
-                ? (activeSegmentColor.blended(withFraction: 0.3, of: NSColor.systemOrange) ?? activeSegmentColor)
+                ? (NSColor.systemOrange)
                 : activeSegmentColor
-            let highlightPath = NSBezierPath(roundedRect: segFrame.insetBy(dx: 1, dy: 1), xRadius: capsuleRadius - 2, yRadius: capsuleRadius - 2)
+            let highlightRect = segFrame.insetBy(dx: 2, dy: 2)
+            let highlightPath = NSBezierPath(roundedRect: highlightRect, xRadius: cornerRadius - 2, yRadius: cornerRadius - 2)
             highlightColor.setFill()
             highlightPath.fill()
 
             NSGraphicsContext.restoreGraphicsState()
         }
 
-        // Draw separators between inactive segments (skip around active)
+        // Dividers between inactive segments (skip around active)
         for i in 0..<(segments.count - 1) {
-            // Skip separators adjacent to the active segment
             if i == activeIndex || i + 1 == activeIndex { continue }
 
             let segment = segments[i]
             guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { continue }
 
             let sepX = segFrame.maxX
-            let sepTop = pillRect.minY + 5
-            let sepBottom = pillRect.maxY - 5
+            let sepTop = barRect.minY + 7
+            let sepBottom = barRect.maxY - 7
 
             separatorColor.setStroke()
             let sepPath = NSBezierPath()
@@ -130,6 +141,12 @@ class PillTabBarView: NSView {
             sepPath.line(to: NSPoint(x: sepX, y: sepBottom))
             sepPath.lineWidth = 1
             sepPath.stroke()
+        }
+    }
+
+    private func updateSegmentColors() {
+        for (i, segment) in segments.enumerated() {
+            segment.textColor = (i == activeIndex) ? activeTextColor : textColor
         }
     }
 
@@ -160,8 +177,46 @@ class PillTabBarView: NSView {
                 segments[i].update(filename: file.url.lastPathComponent, index: i, isActive: i == activeIndex)
             }
         }
-        segments.forEach { $0.textColor = textColor }
+        updateSegmentColors()
         needsDisplay = true
+        updateWidthConstraint()
+    }
+
+    private func updateWidthConstraint() {
+        stackView.layoutSubtreeIfNeeded()
+        let contentWidth = stackView.fittingSize.width + barPadding * 2
+        let maxWidth: CGFloat = (superview?.bounds.width ?? 600) - 32
+        let targetWidth = min(contentWidth, maxWidth)
+
+        if let existing = widthConstraint {
+            existing.constant = targetWidth
+        } else {
+            widthConstraint = widthAnchor.constraint(equalToConstant: targetWidth)
+            widthConstraint?.isActive = true
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = hoverTrackingArea { removeTrackingArea(existing) }
+        hoverTrackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil
+        )
+        addTrackingArea(hoverTrackingArea!)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if event.trackingArea == hoverTrackingArea {
+            onMouseInside?(true)
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if event.trackingArea == hoverTrackingArea {
+            onMouseInside?(false)
+        }
     }
 
     func scrollToActiveTab() {
@@ -194,8 +249,6 @@ class TabSegment: NSView {
     }
 
     private func setupViews(filename: String, isActive: Bool) {
-        // No per-segment background or rounding — the parent draws the capsule
-
         label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
         label.isEditable = false
