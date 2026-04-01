@@ -1530,6 +1530,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             wordCountLabel.textColor = .tertiaryLabelColor
             themeLabelColor = nil
             tocTableView.reloadData()
+            tabBarView.pillBackgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.3)
+            tabBarView.activeSegmentColor = NSColor.controlAccentColor.withAlphaComponent(0.15)
+            tabBarView.textColor = .labelColor
+            tabBarView.separatorColor = .separatorColor
             return
         }
 
@@ -1567,6 +1571,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         wordCountLabel.textColor = labelColor
         themeLabelColor = labelColor
         tocTableView.reloadData()
+        tabBarView.pillBackgroundColor = backgroundColor.blended(withFraction: 0.1, of: labelColor) ?? backgroundColor
+        tabBarView.activeSegmentColor = backgroundColor.blended(withFraction: 0.2, of: labelColor) ?? backgroundColor
+        tabBarView.textColor = labelColor
+        tabBarView.separatorColor = labelColor.withAlphaComponent(0.2)
     }
 
     // MARK: - Menu Validation
