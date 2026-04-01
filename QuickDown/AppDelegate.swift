@@ -619,7 +619,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocItems = parseTOC(from: content)
             tocTableView.reloadData()
 
-            currentAccessibleDirectory = accessibleParentDirectory(for: url)
+            // Only request directory access if the markdown has relative references
+            if contentHasRelativePaths(content) {
+                currentAccessibleDirectory = accessibleParentDirectory(for: url)
+            } else {
+                currentAccessibleDirectory = nil
+            }
             let html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
             try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
 
@@ -975,6 +980,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
 
         return nil
+    }
+
+    /// Checks whether markdown content contains relative image or link paths
+    /// (not absolute paths or URLs). Used to avoid prompting for directory access
+    /// when the file doesn't reference any local resources.
+    private func contentHasRelativePaths(_ markdown: String) -> Bool {
+        // Match ![...](...) and [...](...) where the path doesn't start with http/https/# or /
+        // Also match HTML <img src="..."> with relative paths
+        let patterns = [
+            #"!\[[^\]]*\]\((?!https?://|/|#)"#,      // ![alt](relative/path)
+            #"<img\s[^>]*src\s*=\s*"(?!https?://|/)"# // <img src="relative/path">
+        ]
+        for pattern in patterns {
+            if markdown.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Shows an NSOpenPanel asking the user to grant access to a directory
