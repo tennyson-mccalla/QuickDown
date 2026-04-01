@@ -12,25 +12,26 @@ class PillTabBarView: NSView {
     private(set) var activeIndex: Int = 0
 
     var pillBackgroundColor: NSColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5) {
-        didSet { needsDisplay = true; updateSegmentColors() }
+        didSet { needsDisplay = true }
     }
     var activeSegmentColor: NSColor = NSColor.controlAccentColor.withAlphaComponent(0.2) {
-        didSet { updateSegmentColors() }
+        didSet { needsDisplay = true }
     }
     var textColor: NSColor = .labelColor {
-        didSet { updateSegmentColors() }
+        didSet { segments.forEach { $0.textColor = textColor } }
     }
     var separatorColor: NSColor = NSColor.separatorColor {
         didSet { needsDisplay = true }
     }
     var activeTabRawMode: Bool = false {
-        didSet { updateSegmentColors() }
+        didSet { needsDisplay = true }
     }
 
     private let scrollView: NSScrollView
     private let stackView: NSStackView
     private let segmentHeight: CGFloat = 26
     private let barPadding: CGFloat = 4
+    private let capsuleRadius: CGFloat = 13
 
     override init(frame frameRect: NSRect) {
         scrollView = NSScrollView(frame: .zero)
@@ -48,6 +49,8 @@ class PillTabBarView: NSView {
 
     private func setupViews() {
         wantsLayer = true
+        layer?.masksToBounds = true
+
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasHorizontalScroller = false
         scrollView.hasVerticalScroller = false
@@ -56,38 +59,78 @@ class PillTabBarView: NSView {
         addSubview(scrollView)
 
         stackView.orientation = .horizontal
-        stackView.spacing = 1
+        stackView.spacing = 0
         stackView.alignment = .centerY
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stackView
 
-        let top = scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding)
-        let bottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding)
-        // Lower priority so internal padding yields when the bar is collapsed to height 0
-        top.priority = .defaultHigh
-        bottom.priority = .defaultHigh
+        // All internal constraints at defaultHigh so they yield
+        // when the bar is collapsed to height 0 (single-file mode)
+        let constraints: [(NSLayoutConstraint, NSLayoutConstraint.Priority)] = [
+            (scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding), .defaultHigh),
+            (scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding), .defaultHigh),
+            (scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding), .defaultHigh),
+            (scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding), .defaultHigh),
+            (stackView.topAnchor.constraint(equalTo: scrollView.topAnchor), .defaultHigh),
+            (stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor), .defaultHigh),
+            (stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor), .defaultHigh),
+            (stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor), .defaultHigh),
+        ]
 
-        let stackHeight = stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor)
-        stackHeight.priority = .defaultHigh
-
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding),
-            top,
-            bottom,
-            stackView.topAnchor.constraint(equalTo: scrollView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            stackHeight,
-        ])
+        for (constraint, priority) in constraints {
+            constraint.priority = priority
+            constraint.isActive = true
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+
+        // Draw the continuous capsule background
         let pillRect = bounds.insetBy(dx: 2, dy: 2)
-        let path = NSBezierPath(roundedRect: pillRect, xRadius: segmentHeight / 2, yRadius: segmentHeight / 2)
+        let capsulePath = NSBezierPath(roundedRect: pillRect, xRadius: capsuleRadius, yRadius: capsuleRadius)
         pillBackgroundColor.setFill()
-        path.fill()
+        capsulePath.fill()
+
+        // Draw the active segment highlight inside the capsule
+        if activeIndex < segments.count {
+            let segment = segments[activeIndex]
+            // Convert segment frame to our coordinate space
+            guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { return }
+
+            // Clip highlight to the capsule shape
+            NSGraphicsContext.saveGraphicsState()
+            capsulePath.addClip()
+
+            let highlightColor = activeTabRawMode
+                ? (activeSegmentColor.blended(withFraction: 0.3, of: NSColor.systemOrange) ?? activeSegmentColor)
+                : activeSegmentColor
+            let highlightPath = NSBezierPath(roundedRect: segFrame.insetBy(dx: 1, dy: 1), xRadius: capsuleRadius - 2, yRadius: capsuleRadius - 2)
+            highlightColor.setFill()
+            highlightPath.fill()
+
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        // Draw separators between inactive segments (skip around active)
+        for i in 0..<(segments.count - 1) {
+            // Skip separators adjacent to the active segment
+            if i == activeIndex || i + 1 == activeIndex { continue }
+
+            let segment = segments[i]
+            guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { continue }
+
+            let sepX = segFrame.maxX
+            let sepTop = pillRect.minY + 5
+            let sepBottom = pillRect.maxY - 5
+
+            separatorColor.setStroke()
+            let sepPath = NSBezierPath()
+            sepPath.move(to: NSPoint(x: sepX, y: sepTop))
+            sepPath.line(to: NSPoint(x: sepX, y: sepBottom))
+            sepPath.lineWidth = 1
+            sepPath.stroke()
+        }
     }
 
     func setTabs(_ files: [FileState], activeIndex: Int) {
@@ -117,20 +160,8 @@ class PillTabBarView: NSView {
                 segments[i].update(filename: file.url.lastPathComponent, index: i, isActive: i == activeIndex)
             }
         }
-        updateSegmentColors()
-    }
-
-    private func updateSegmentColors() {
-        for (i, segment) in segments.enumerated() {
-            if i == activeIndex {
-                segment.backgroundColor = activeTabRawMode
-                    ? activeSegmentColor.blended(withFraction: 0.3, of: NSColor.systemOrange) ?? activeSegmentColor
-                    : activeSegmentColor
-            } else {
-                segment.backgroundColor = .clear
-            }
-            segment.textColor = textColor
-        }
+        segments.forEach { $0.textColor = textColor }
+        needsDisplay = true
     }
 
     func scrollToActiveTab() {
@@ -143,7 +174,6 @@ class PillTabBarView: NSView {
 class TabSegment: NSView {
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
-    var backgroundColor: NSColor = .clear { didSet { needsDisplay = true } }
     var textColor: NSColor = .labelColor { didSet { label.textColor = textColor } }
 
     private let label: NSTextField
@@ -164,8 +194,7 @@ class TabSegment: NSView {
     }
 
     private func setupViews(filename: String, isActive: Bool) {
-        wantsLayer = true
-        layer?.cornerRadius = 12
+        // No per-segment background or rounding — the parent draws the capsule
 
         label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
@@ -203,15 +232,6 @@ class TabSegment: NSView {
     func update(filename: String, index: Int, isActive: Bool) {
         self.index = index
         label.stringValue = filename
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        if backgroundColor != .clear {
-            let path = NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12)
-            backgroundColor.setFill()
-            path.fill()
-        }
     }
 
     override func updateTrackingAreas() {

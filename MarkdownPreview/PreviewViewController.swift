@@ -243,6 +243,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
         result = result.replacingOccurrences(of: "`", with: "\\`")
         result = result.replacingOccurrences(of: "$", with: "\\$")
+        result = result.replacingOccurrences(of: "</", with: "<\\/")
         result = result.replacingOccurrences(of: "\r\n", with: "\n")
         result = result.replacingOccurrences(of: "\r", with: "\n")
         return result
