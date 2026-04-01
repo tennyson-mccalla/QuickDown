@@ -1725,7 +1725,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         viewMenu.addItem(NSMenuItem.separator())
 
-        let rawModeItem = NSMenuItem(title: "Toggle Raw Source", action: #selector(toggleRawModeAction(_:)), keyEquivalent: "u")
+        let rawModeItem = NSMenuItem(title: "Show Raw Source", action: #selector(toggleRawModeAction(_:)), keyEquivalent: "u")
         rawModeItem.target = self
         rawModeItem.keyEquivalentModifierMask = [.command]
         viewMenu.addItem(rawModeItem)
@@ -1983,6 +1983,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
         if !fileURLs.isEmpty {
             openFiles(fileURLs)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -2149,6 +2151,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
         } catch {
             showError("Failed to load file: \(error.localizedDescription)")
+
+            // Remove the failed tab and restore previous state
+            openFiles.remove(at: index)
+            if openFiles.isEmpty {
+                window.title = "QuickDown"
+                window.representedURL = nil
+                webView?.isHidden = true
+                dropZoneLabel.isHidden = false
+                activeFileIndex = 0
+            } else {
+                activeFileIndex = min(activeFileIndex, openFiles.count - 1)
+                loadTab(at: activeFileIndex)
+            }
+            updateTabBarVisibility()
+            return
         }
 
         // Update tab bar and raw mode indicator
