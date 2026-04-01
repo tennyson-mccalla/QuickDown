@@ -10,20 +10,14 @@ import WebKit
 class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
-            NSLog("QuickDown SchemeHandler: bad URL")
             urlSchemeTask.didFailWithError(URLError(.badURL))
             return
         }
 
-        NSLog("QuickDown SchemeHandler: request for %@", url.absoluteString)
-
         let filePath = url.path
         let fileURL = URL(fileURLWithPath: filePath)
 
-        NSLog("QuickDown SchemeHandler: resolved path = %@", filePath)
-
         guard FileManager.default.fileExists(atPath: filePath) else {
-            NSLog("QuickDown SchemeHandler: FILE NOT FOUND at %@", filePath)
             urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
@@ -36,13 +30,11 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
             } else {
                 mimeType = "application/octet-stream"
             }
-            NSLog("QuickDown SchemeHandler: serving %@ (%d bytes, %@)", filePath, data.count, mimeType)
             let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
             urlSchemeTask.didReceive(response)
             urlSchemeTask.didReceive(data)
             urlSchemeTask.didFinish()
         } catch {
-            NSLog("QuickDown SchemeHandler: read error for %@: %@", filePath, error.localizedDescription)
             urlSchemeTask.didFailWithError(error)
         }
     }
@@ -884,37 +876,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // MARK: - Directory Access (Sandbox)
 
-    /// Creates and stores a security-scoped bookmark for the parent directory of the given file URL.
-    private func bookmarkParentDirectory(of fileURL: URL) {
-        let directoryURL = fileURL.deletingLastPathComponent()
-
-        do {
-            let bookmarkData = try directoryURL.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-
-            var bookmarks = getDirectoryBookmarks()
-            bookmarks[directoryURL.path] = bookmarkData
-
-            // LRU eviction: keep only the most recent entries
-            if bookmarks.count > maxDirectoryBookmarks {
-                // Remove oldest entries (dictionary order is not guaranteed,
-                // but this prevents unbounded growth)
-                let excess = bookmarks.count - maxDirectoryBookmarks
-                let keysToRemove = Array(bookmarks.keys.prefix(excess))
-                for key in keysToRemove {
-                    bookmarks.removeValue(forKey: key)
-                }
-            }
-
-            UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
-        } catch {
-            NSLog("QuickDown: Could not bookmark directory \(directoryURL.path): \(error)")
-        }
-    }
-
     private func getDirectoryBookmarks() -> [String: Data] {
         return UserDefaults.standard.dictionary(forKey: directoryBookmarksKey) as? [String: Data] ?? [:]
     }
@@ -965,15 +926,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
         currentAccessedDirectoryURL = nil
 
-        // Try existing bookmark first
-        bookmarkParentDirectory(of: fileURL)
-
+        // Try existing bookmark first (saved from a previous grant)
         if let resolved = resolveDirectoryBookmark(for: dirURL.path) {
             currentAccessedDirectoryURL = resolved
             return resolved
         }
 
-        // Bookmark failed — prompt user to grant directory access
+        // No bookmark — prompt user to grant directory access
         if let granted = requestDirectoryAccess(for: dirURL) {
             currentAccessedDirectoryURL = granted
             return granted
@@ -1024,6 +983,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             )
             var bookmarks = getDirectoryBookmarks()
             bookmarks[selectedURL.path] = bookmarkData
+
+            // LRU eviction: prevent unbounded bookmark growth
+            if bookmarks.count > maxDirectoryBookmarks {
+                let excess = bookmarks.count - maxDirectoryBookmarks
+                for key in Array(bookmarks.keys.prefix(excess)) {
+                    bookmarks.removeValue(forKey: key)
+                }
+            }
+
             UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
         } catch {
             NSLog("QuickDown: Could not bookmark granted directory: \(error)")
@@ -1300,7 +1268,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             // bypassing WebKit's sandbox restrictions on file:// sub-resources.
             let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
             baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
-            NSLog("QuickDown: base tag = %@", baseTag)
         } else {
             baseTag = ""
         }
