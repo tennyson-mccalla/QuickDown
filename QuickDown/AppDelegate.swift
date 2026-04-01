@@ -621,6 +621,48 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
+    /// Opens multiple files at once — adds all as tabs, then loads only the last one.
+    /// Avoids the cascading async crossfade issue of calling openFile() in a loop.
+    func openFiles(_ urls: [URL]) {
+        guard !urls.isEmpty, window != nil else { return }
+        if urls.count == 1 {
+            openFile(urls[0])
+            return
+        }
+
+        ensureWebViewExists()
+
+        // Filter out already-open files and deduplicate
+        let newURLs = urls.filter { url in
+            !openFiles.contains(where: { $0.url.path == url.path })
+        }
+        guard !newURLs.isEmpty else {
+            // All files already open — just activate the last one
+            if let last = urls.last,
+               let idx = openFiles.firstIndex(where: { $0.url.path == last.path }) {
+                switchToTab(idx)
+            }
+            return
+        }
+
+        // Add all new files as tabs silently (no loading/crossfade)
+        for url in newURLs {
+            var newFile = FileState(url: url)
+            newFile.sidebarVisible = isSidebarVisible
+            newFile.fontScale = fontScale
+            openFiles.append(newFile)
+            addToRecentFiles(url)
+        }
+
+        // Load only the last added file
+        let lastIndex = openFiles.count - 1
+        activeFileIndex = lastIndex
+        loadTab(at: lastIndex)
+
+        webView?.isHidden = false
+        dropZoneLabel.isHidden = true
+    }
+
     private func parseTOC(from markdown: String) -> [TOCItem] {
         var items: [TOCItem] = []
         let lines = markdown.components(separatedBy: .newlines)
@@ -1411,9 +1453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK else { return }
-            for url in panel.urls {
-                self?.openFile(url)
-            }
+            self?.openFiles(panel.urls)
         }
     }
 
@@ -1439,7 +1479,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Update window background to match theme
         updateWindowBackground()
 
-        guard let webView = webView, !webView.isHidden, snapshotOverlay == nil else {
+        // Clear any stuck snapshot overlay (can happen after rapid multi-file open)
+        if let overlay = snapshotOverlay {
+            overlay.removeFromSuperview()
+            snapshotOverlay = nil
+        }
+
+        guard let webView = webView, !webView.isHidden else {
             webView?.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
             return
         }
@@ -1601,6 +1647,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // MARK: - Open from Finder / URL Scheme
 
     func application(_ application: NSApplication, open urls: [URL]) {
+        var fileURLs: [URL] = []
         for url in urls {
             if url.scheme == "quickdown" {
                 if isSetupComplete {
@@ -1609,10 +1656,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     pendingFileURLs.append(url)
                 }
             } else if isSetupComplete {
-                openFile(url)
+                fileURLs.append(url)
             } else {
                 pendingFileURLs.append(url)
             }
+        }
+        if !fileURLs.isEmpty {
+            openFiles(fileURLs)
         }
     }
 

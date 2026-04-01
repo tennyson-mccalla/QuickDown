@@ -61,24 +61,15 @@ class PillTabBarView: NSView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stackView
 
-        let top = scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding)
-        let bottom = scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding)
-        // Lower priority so internal padding yields when the bar is collapsed to height 0
-        top.priority = .defaultHigh
-        bottom.priority = .defaultHigh
-
-        let stackHeight = stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor)
-        stackHeight.priority = .defaultHigh
-
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding),
-            top,
-            bottom,
+            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: barPadding),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -barPadding),
             stackView.topAnchor.constraint(equalTo: scrollView.topAnchor),
             stackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             stackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            stackHeight,
+            stackView.heightAnchor.constraint(equalTo: scrollView.heightAnchor),
         ])
     }
 
