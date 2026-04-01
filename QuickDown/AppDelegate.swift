@@ -122,6 +122,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var isSetupComplete = false
     private var pendingFileURLs: [URL] = []
     private var pendingScrollRestoreY: Double?
+    private var pendingScrollFraction: Double?
     private var snapshotOverlay: NSImageView?
     private var currentAccessibleDirectory: URL?
     private var currentAccessedDirectoryURL: URL?
@@ -820,7 +821,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
 
-                let html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
+                let isRaw = self.openFiles[self.activeFileIndex].isRawMode
+                let html: String
+                if isRaw {
+                    html = self.generateRawHTML(source: content)
+                } else {
+                    html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
+                }
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
@@ -828,9 +835,61 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     guard let self = self else { return }
                     self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
+
+                self.updateRawModeIndicator()
             } catch {
                 // Silently fail on reload errors - file might be mid-save
             }
+        }
+    }
+
+    // MARK: - Raw Mode Toggle
+
+    private func toggleRawMode() {
+        guard !openFiles.isEmpty else { return }
+
+        openFiles[activeFileIndex].isRawMode.toggle()
+        let isRaw = openFiles[activeFileIndex].isRawMode
+        let file = openFiles[activeFileIndex]
+
+        do {
+            let content = try readFileWithFallbackEncoding(url: file.url)
+
+            let html: String
+            if isRaw {
+                html = generateRawHTML(source: content)
+            } else {
+                html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
+            }
+
+            // Save scroll position proportionally (raw and rendered have different heights)
+            webView?.evaluateJavaScript("""
+                (function() {
+                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                    return maxScroll > 0 ? window.scrollY / maxScroll : 0;
+                })()
+            """) { [weak self] result, _ in
+                guard let self = self else { return }
+
+                let scrollFraction = result as? Double ?? 0
+
+                do {
+                    try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
+                    self.pendingScrollFraction = scrollFraction
+                    self.crossfadeTransition { [weak self] in
+                        guard let self = self else { return }
+                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+                    }
+                } catch {
+                    self.showError("Failed to toggle raw mode: \(error.localizedDescription)")
+                }
+
+                self.updateRawModeIndicator()
+                self.updateTabBarVisibility()
+                self.tabBarView.activeTabRawMode = self.openFiles[self.activeFileIndex].isRawMode
+            }
+        } catch {
+            showError("Failed to read file: \(error.localizedDescription)")
         }
     }
 
@@ -1487,6 +1546,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         """
     }
 
+    private func generateRawHTML(source: String) -> String {
+        let highlightJS = loadResource("highlight.min", ext: "js")
+        let stylesCSS = loadResource("styles", ext: "css")
+        let githubCSS = loadResource("github.min", ext: "css")
+        let githubDarkCSS = loadResource("github-dark.min", ext: "css")
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>\(stylesCSS)</style>
+            <style id="hl-light">\(githubCSS)</style>
+            <style id="hl-dark">\(githubDarkCSS)</style>
+            \(themeScript)
+            <style>
+                body { padding: 24px; max-width: 900px; margin: 0 auto; }
+            </style>
+            <script>\(highlightJS)</script>
+        </head>
+        <body\(fontScale != 1.0 ? " style=\"font-size: \(fontScale * 16)px\"" : "")>
+            <pre class="raw-source"><code class="language-markdown">\(escapeHTMLEntities(source))</code></pre>
+            <script>
+                document.querySelectorAll('pre code').forEach(function(block) {
+                    hljs.highlightElement(block);
+                });
+            </script>
+        </body>
+        </html>
+        """
+    }
+
+    private func escapeHTMLEntities(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
     private func escapeForJavaScript(_ string: String) -> String {
         var result = string
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
@@ -1616,6 +1715,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         zoomResetItem.target = self
         viewMenu.addItem(zoomResetItem)
 
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let rawModeItem = NSMenuItem(title: "Toggle Raw Source", action: #selector(toggleRawModeAction(_:)), keyEquivalent: "u")
+        rawModeItem.target = self
+        rawModeItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(rawModeItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
@@ -1728,6 +1834,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         applyFontScale()
     }
 
+    @objc func toggleRawModeAction(_ sender: Any?) {
+        toggleRawMode()
+    }
+
     private func applyFontScale() {
         webView?.evaluateJavaScript("document.body.style.fontSize = '\(fontScale * 16)px'")
     }
@@ -1817,6 +1927,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleRawModeAction(_:)) {
+            if !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode {
+                menuItem.title = "Show Rendered Preview"
+            } else {
+                menuItem.title = "Show Raw Source"
+            }
+            return currentFileURL != nil
+        }
         if menuItem.action == #selector(exportPDFAction(_:)) ||
            menuItem.action == #selector(exportHTMLAction(_:)) ||
            menuItem.action == #selector(shareDocument(_:)) ||
@@ -1930,6 +2048,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         if shouldShow {
             tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
+            tabBarView.activeTabRawMode = !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode
             tabBarView.scrollToActiveTab()
         }
     }
@@ -1986,14 +2105,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
             // Try to get directory access for relative path resolution
             currentAccessibleDirectory = accessibleParentDirectory(for: file.url, promptIfNeeded: contentHasRelativePaths(content))
-            let html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
+            let html: String
+            if file.isRawMode {
+                html = generateRawHTML(source: content)
+            } else {
+                html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
+            }
             pendingScrollRestoreY = file.scrollY
             try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
         } catch {
             showError("Failed to load file: \(error.localizedDescription)")
         }
 
-        // Update tab bar
+        // Update tab bar and raw mode indicator
+        updateRawModeIndicator()
+        tabBarView.activeTabRawMode = file.isRawMode
         updateTabBarVisibility()
     }
 
@@ -2121,6 +2247,17 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
         wordCountLabel.stringValue = "\(wordStr) words  ·  \(charStr) characters"
         wordCountLabel.isHidden = false
     }
+
+    private func updateRawModeIndicator() {
+        guard !openFiles.isEmpty else { return }
+
+        if openFiles[activeFileIndex].isRawMode {
+            let current = wordCountLabel.stringValue
+            if !current.hasPrefix("RAW") {
+                wordCountLabel.stringValue = "RAW  \u{00B7}  \(current)"
+            }
+        }
+    }
 }
 
 // MARK: - WKNavigationDelegate
@@ -2178,7 +2315,19 @@ extension AppDelegate: WKNavigationDelegate {
             }
         }
 
-        if let scrollY = pendingScrollRestoreY {
+        if let fraction = pendingScrollFraction {
+            pendingScrollFraction = nil
+            pendingScrollRestoreY = nil
+            // Proportional scroll: compute absolute position from fraction
+            webView.evaluateJavaScript("""
+                (function() {
+                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                    window.scrollTo(0, maxScroll > 0 ? \(fraction) * maxScroll : 0);
+                })()
+            """) { _, _ in
+                DispatchQueue.main.async { startFade() }
+            }
+        } else if let scrollY = pendingScrollRestoreY {
             pendingScrollRestoreY = nil
             // Scroll first, then fade — ensures content is at correct position before reveal
             webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
@@ -2220,7 +2369,7 @@ extension AppDelegate: PillTabBarDelegate {
     }
 
     func tabBar(_ tabBar: PillTabBarView, didClickActiveTabAt index: Int) {
-        // Raw mode toggle — implemented in feature/raw-mode branch
+        toggleRawMode()
     }
 }
 
