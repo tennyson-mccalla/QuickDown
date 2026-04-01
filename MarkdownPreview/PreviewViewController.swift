@@ -1,6 +1,40 @@
 import Cocoa
 import Quartz
+import UniformTypeIdentifiers
 import WebKit
+
+/// Serves local files to WKWebView via a custom URL scheme.
+class QLLocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let url = urlSchemeTask.request.url else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+        let filePath = url.path
+        let fileURL = URL(fileURLWithPath: filePath)
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let mimeType: String
+            if let utType = UTType(filenameExtension: fileURL.pathExtension) {
+                mimeType = utType.preferredMIMEType ?? "application/octet-stream"
+            } else {
+                mimeType = "application/octet-stream"
+            }
+            let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+}
 
 class PreviewViewController: NSViewController, QLPreviewingController {
 
@@ -11,6 +45,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         self.view = view
 
         let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(QLLocalFileSchemeHandler(), forURLScheme: "quickdown-file")
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
@@ -78,8 +113,8 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
         let baseTag: String
         if let baseDir = baseDirectoryURL {
-            let escapedURL = baseDir.absoluteString.replacingOccurrences(of: "\"", with: "%22")
-            baseTag = "<base href=\"\(escapedURL)\">"
+            let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
+            baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
         } else {
             baseTag = ""
         }

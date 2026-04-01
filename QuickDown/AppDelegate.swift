@@ -1,5 +1,48 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
+
+// MARK: - Local File Scheme Handler
+
+/// Serves local files to WKWebView via a custom URL scheme, bypassing sandbox
+/// restrictions on WebKit's content process. The app process has security-scoped
+/// bookmark access; this handler bridges that access to WebKit.
+class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let url = urlSchemeTask.request.url else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+
+        let filePath = url.path
+        let fileURL = URL(fileURLWithPath: filePath)
+
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let mimeType: String
+            if let utType = UTType(filenameExtension: fileURL.pathExtension) {
+                mimeType = utType.preferredMIMEType ?? "application/octet-stream"
+            } else {
+                mimeType = "application/octet-stream"
+            }
+            let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
+        // No async work to cancel
+    }
+}
 
 enum Theme: String, CaseIterable {
     case system = "System"
@@ -518,6 +561,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         guard webView == nil else { return }
 
         let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "quickdown-file")
         let wv = DroppableWebView(frame: mainContentView.bounds, configuration: config)
         wv.autoresizingMask = [.width, .height]
         wv.navigationDelegate = self
@@ -535,16 +579,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     private func loadHTMLInWebView(_ html: String, allowingAccessTo directory: URL? = nil) throws {
         try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-
-        if directory != nil {
-            // Grant WebKit read access to the filesystem so it can resolve
-            // relative images and links via the <base> tag. The HTML is in /tmp
-            // and images are in the user's directory — using root as the common
-            // ancestor covers both. Safe for a local-only Markdown viewer.
-            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: URL(fileURLWithPath: "/"))
-        } else {
-            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
-        }
+        // Images are served via quickdown-file:// scheme handler, so we only
+        // need read access to the temp directory for the HTML file itself.
+        webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
     }
 
     func openFile(_ url: URL) {
@@ -703,13 +740,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 let html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
-                let accessDir: URL = self.currentAccessibleDirectory != nil
-                    ? URL(fileURLWithPath: "/")
-                    : FileManager.default.temporaryDirectory
 
                 self.pendingScrollRestoreY = scrollY as? Double
                 self.crossfadeTransition {
-                    self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: accessDir)
+                    self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
@@ -1188,8 +1222,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         let baseTag: String
         if let baseDir = baseDirectoryURL {
-            let escapedURL = baseDir.absoluteString.replacingOccurrences(of: "\"", with: "%22")
-            baseTag = "<base href=\"\(escapedURL)\">"
+            // Use custom scheme so WKURLSchemeHandler can serve local files,
+            // bypassing WebKit's sandbox restrictions on file:// sub-resources.
+            let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
+            baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
         } else {
             baseTag = ""
         }
@@ -1816,29 +1852,23 @@ extension AppDelegate: WKNavigationDelegate {
             return
         }
 
-        // Relative or local file:// links to .md files — open in QuickDown
-        if scheme == "file" {
-            let ext = url.pathExtension.lowercased()
+        // Relative or local file links (.md) — open in QuickDown
+        // Handles both file:// and quickdown-file:// schemes
+        if scheme == "file" || scheme == "quickdown-file" {
+            let filePath = url.path
+            let fileURL = URL(fileURLWithPath: filePath)
+            let ext = fileURL.pathExtension.lowercased()
             let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mkd"]
             if markdownExtensions.contains(ext) {
-                let resolvedURL: URL
-                if url.path.hasPrefix("/") {
-                    resolvedURL = url
-                } else if let baseDir = currentAccessibleDirectory {
-                    resolvedURL = baseDir.appendingPathComponent(url.path)
-                } else {
-                    resolvedURL = url
-                }
-
-                if FileManager.default.fileExists(atPath: resolvedURL.path) {
-                    openFile(resolvedURL.standardized)
+                if FileManager.default.fileExists(atPath: filePath) {
+                    openFile(fileURL.standardized)
                     decisionHandler(.cancel)
                     return
                 }
             }
 
             // Non-.md file links — let the system handle them
-            NSWorkspace.shared.open(url)
+            NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
             decisionHandler(.cancel)
             return
         }
