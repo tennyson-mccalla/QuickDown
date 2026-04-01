@@ -1,6 +1,40 @@
 import Cocoa
 import Quartz
+import UniformTypeIdentifiers
 import WebKit
+
+/// Serves local files to WKWebView via a custom URL scheme.
+class QLLocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let url = urlSchemeTask.request.url else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+        let filePath = url.path
+        let fileURL = URL(fileURLWithPath: filePath)
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let mimeType: String
+            if let utType = UTType(filenameExtension: fileURL.pathExtension) {
+                mimeType = utType.preferredMIMEType ?? "application/octet-stream"
+            } else {
+                mimeType = "application/octet-stream"
+            }
+            let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+}
 
 class PreviewViewController: NSViewController, QLPreviewingController {
 
@@ -11,6 +45,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         self.view = view
 
         let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(QLLocalFileSchemeHandler(), forURLScheme: "quickdown-file")
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
@@ -26,8 +61,14 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         do {
             let markdownContent = try readFileWithFallbackEncoding(url: url)
-            let html = generateHTML(markdown: markdownContent)
-            webView.loadHTMLString(html, baseURL: nil)
+            let baseDirectory = url.deletingLastPathComponent()
+            let html = generateHTML(markdown: markdownContent, baseDirectoryURL: baseDirectory)
+
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("quickdown-ql-\(UUID().uuidString).html")
+            try html.write(to: tempURL, atomically: true, encoding: .utf8)
+            webView.loadFileURL(tempURL, allowingReadAccessTo: baseDirectory)
+
             handler(nil)
         } catch {
             handler(error)
@@ -67,8 +108,16 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         return content
     }
 
-    private func generateHTML(markdown: String) -> String {
+    private func generateHTML(markdown: String, baseDirectoryURL: URL? = nil) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
+
+        let baseTag: String
+        if let baseDir = baseDirectoryURL {
+            let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
+            baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
+        } else {
+            baseTag = ""
+        }
 
         // Detect which features are needed
         let needsMermaid = markdown.contains("```mermaid")
@@ -126,6 +175,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
         <html>
         <head>
             <meta charset="UTF-8">
+            \(baseTag)
             <style>\(stylesCSS)</style>
             \(katexStyleTag)
             <style media="(prefers-color-scheme: light)">\(githubCSS)</style>

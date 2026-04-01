@@ -1,5 +1,48 @@
 import Cocoa
+import UniformTypeIdentifiers
 import WebKit
+
+// MARK: - Local File Scheme Handler
+
+/// Serves local files to WKWebView via a custom URL scheme, bypassing sandbox
+/// restrictions on WebKit's content process. The app process has security-scoped
+/// bookmark access; this handler bridges that access to WebKit.
+class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+        guard let url = urlSchemeTask.request.url else {
+            urlSchemeTask.didFailWithError(URLError(.badURL))
+            return
+        }
+
+        let filePath = url.path
+        let fileURL = URL(fileURLWithPath: filePath)
+
+        guard FileManager.default.fileExists(atPath: filePath) else {
+            urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let mimeType: String
+            if let utType = UTType(filenameExtension: fileURL.pathExtension) {
+                mimeType = utType.preferredMIMEType ?? "application/octet-stream"
+            } else {
+                mimeType = "application/octet-stream"
+            }
+            let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
+            urlSchemeTask.didReceive(response)
+            urlSchemeTask.didReceive(data)
+            urlSchemeTask.didFinish()
+        } catch {
+            urlSchemeTask.didFailWithError(error)
+        }
+    }
+
+    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
+        // No async work to cancel
+    }
+}
 
 enum Theme: String, CaseIterable {
     case system = "System"
@@ -52,7 +95,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     private var recentFilesMenu: NSMenu!
     private let recentFilesKey = "RecentFiles"
+    private let directoryBookmarksKey = "DirectoryBookmarks"
     private let maxRecentFiles = 10
+    private let maxDirectoryBookmarks = 50
 
     // TOC sidebar
     private var splitView: NSSplitView!
@@ -78,6 +123,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var pendingFileURLs: [URL] = []
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
+    private var currentAccessibleDirectory: URL?
+    private var currentAccessedDirectoryURL: URL?
 
     // Tab bar (added in Task 2)
     private var tabBarView: PillTabBarView!
@@ -151,6 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     func applicationWillTerminate(_ notification: Notification) {
         stopWatchingFile()
+        currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
     }
 
     // MARK: - Window Setup
@@ -558,6 +606,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         guard webView == nil else { return }
 
         let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "quickdown-file")
         let wv = DroppableWebView(frame: mainContentView.bounds, configuration: config)
         wv.autoresizingMask = [.width, .height]
         wv.navigationDelegate = self
@@ -573,8 +622,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         webView = wv
     }
 
-    private func loadHTMLInWebView(_ html: String) throws {
+    private func loadHTMLInWebView(_ html: String, allowingAccessTo directory: URL? = nil) throws {
         try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+        // Images are served via quickdown-file:// scheme handler, so we only
+        // need read access to the temp directory for the HTML file itself.
         webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
     }
 
@@ -769,7 +820,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
 
-                let html = self.generateHTML(markdown: content)
+                let html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
@@ -899,6 +950,136 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     @objc private func clearRecentFiles(_ sender: Any?) {
         UserDefaults.standard.removeObject(forKey: recentFilesKey)
         updateRecentFilesMenu()
+    }
+
+    // MARK: - Directory Access (Sandbox)
+
+    private func getDirectoryBookmarks() -> [String: Data] {
+        return UserDefaults.standard.dictionary(forKey: directoryBookmarksKey) as? [String: Data] ?? [:]
+    }
+
+    /// Resolves and begins accessing the security-scoped bookmark for the given directory.
+    /// Returns the directory URL if access was granted, nil otherwise.
+    private func resolveDirectoryBookmark(for directoryPath: String) -> URL? {
+        let bookmarks = getDirectoryBookmarks()
+        guard let data = bookmarks[directoryPath] else { return nil }
+
+        var isStale = false
+        do {
+            let url = try URL(
+                resolvingBookmarkData: data,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+
+            if isStale {
+                if let newData = try? url.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                ) {
+                    var bookmarks = getDirectoryBookmarks()
+                    bookmarks[directoryPath] = newData
+                    UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
+                }
+            }
+
+            guard url.startAccessingSecurityScopedResource() else {
+                return nil
+            }
+
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Returns the parent directory URL with sandbox access, either from a stored
+    /// bookmark or by prompting the user to grant access via NSOpenPanel.
+    /// When `promptIfNeeded` is false, only uses saved bookmarks (no UI prompt).
+    private func accessibleParentDirectory(for fileURL: URL, promptIfNeeded: Bool = true) -> URL? {
+        let dirURL = fileURL.deletingLastPathComponent()
+
+        // Stop accessing the previous directory
+        currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
+        currentAccessedDirectoryURL = nil
+
+        // Try existing bookmark first (saved from a previous grant)
+        if let resolved = resolveDirectoryBookmark(for: dirURL.path) {
+            currentAccessedDirectoryURL = resolved
+            return resolved
+        }
+
+        // No bookmark — prompt user only if requested (i.e., file has relative images)
+        if promptIfNeeded, let granted = requestDirectoryAccess(for: dirURL) {
+            currentAccessedDirectoryURL = granted
+            return granted
+        }
+
+        return nil
+    }
+
+    /// Checks whether markdown content contains relative image or link paths
+    /// (not absolute paths or URLs). Used to avoid prompting for directory access
+    /// when the file doesn't reference any local resources.
+    private func contentHasRelativePaths(_ markdown: String) -> Bool {
+        // Match ![...](...) and [...](...) where the path doesn't start with http/https/# or /
+        // Also match HTML <img src="..."> with relative paths
+        let patterns = [
+            #"!\[[^\]]*\]\((?!https?://|/|#)"#,      // ![alt](relative/path)
+            #"<img\s[^>]*src\s*=\s*"(?!https?://|/)"# // <img src="relative/path">
+        ]
+        for pattern in patterns {
+            if markdown.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Shows an NSOpenPanel asking the user to grant access to a directory
+    /// so relative images can be displayed. Saves a bookmark on success.
+    private func requestDirectoryAccess(for directoryURL: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = directoryURL
+        panel.message = "QuickDown needs access to this folder to display images referenced in your Markdown file."
+        panel.prompt = "Grant Access"
+
+        guard panel.runModal() == .OK, let selectedURL = panel.url else {
+            return nil
+        }
+
+        // Save bookmark for future sessions
+        do {
+            let bookmarkData = try selectedURL.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            var bookmarks = getDirectoryBookmarks()
+            bookmarks[selectedURL.path] = bookmarkData
+
+            // LRU eviction: prevent unbounded bookmark growth
+            if bookmarks.count > maxDirectoryBookmarks {
+                let excess = bookmarks.count - maxDirectoryBookmarks
+                for key in Array(bookmarks.keys.prefix(excess)) {
+                    bookmarks.removeValue(forKey: key)
+                }
+            }
+
+            UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
+        } catch {
+            NSLog("QuickDown: Could not bookmark granted directory: \(error)")
+        }
+
+        guard selectedURL.startAccessingSecurityScopedResource() else {
+            return nil
+        }
+        return selectedURL
     }
 
     private func readFileWithFallbackEncoding(url: URL) throws -> String {
@@ -1157,8 +1338,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         return content
     }
 
-    private func generateHTML(markdown: String) -> String {
+    private func generateHTML(markdown: String, baseDirectoryURL: URL? = nil) -> String {
         let escapedMarkdown = escapeForJavaScript(markdown)
+
+        let baseTag: String
+        if let baseDir = baseDirectoryURL {
+            // Use custom scheme so WKURLSchemeHandler can serve local files,
+            // bypassing WebKit's sandbox restrictions on file:// sub-resources.
+            let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
+            baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
+        } else {
+            baseTag = ""
+        }
 
         // Detect which features are needed (lazy loading)
         let needsMermaid = markdown.contains("```mermaid")
@@ -1222,6 +1413,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         <html>
         <head>
             <meta charset="UTF-8">
+            \(baseTag)
             <style>\(stylesCSS)</style>
             \(katexStyleTag)
             <style id="hl-light">\(githubCSS)</style>
@@ -1792,13 +1984,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocTableView.reloadData()
             updateWordCount(content)
 
-            let html = generateHTML(markdown: content)
+            // Try to get directory access for relative path resolution
+            currentAccessibleDirectory = accessibleParentDirectory(for: file.url, promptIfNeeded: contentHasRelativePaths(content))
+            let html = generateHTML(markdown: content, baseDirectoryURL: currentAccessibleDirectory)
             pendingScrollRestoreY = file.scrollY
-            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-            crossfadeTransition { [weak self] in
-                guard let self = self else { return }
-                self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
-            }
+            try loadHTMLInWebView(html, allowingAccessTo: currentAccessibleDirectory)
         } catch {
             showError("Failed to load file: \(error.localizedDescription)")
         }
@@ -1944,8 +2134,30 @@ extension AppDelegate: WKNavigationDelegate {
             return
         }
 
+        // External links — open in default browser
         if scheme == "http" || scheme == "https" || scheme == "mailto" {
             NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        // Relative or local file links (.md) — open in QuickDown
+        // Handles both file:// and quickdown-file:// schemes
+        if scheme == "file" || scheme == "quickdown-file" {
+            let filePath = url.path
+            let fileURL = URL(fileURLWithPath: filePath)
+            let ext = fileURL.pathExtension.lowercased()
+            let markdownExtensions = ["md", "markdown", "mdown", "mkdn", "mkd"]
+            if markdownExtensions.contains(ext) {
+                if FileManager.default.fileExists(atPath: filePath) {
+                    openFile(fileURL.standardized)
+                    decisionHandler(.cancel)
+                    return
+                }
+            }
+
+            // Non-.md file links — let the system handle them
+            NSWorkspace.shared.open(URL(fileURLWithPath: filePath))
             decisionHandler(.cancel)
             return
         }
