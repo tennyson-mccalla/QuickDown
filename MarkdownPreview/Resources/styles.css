@@ -256,6 +256,29 @@ kbd {
     --table-border: #4c566a;
 }
 
+/* Raw source view */
+.raw-source {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    tab-size: 4;
+    padding: 16px;
+    margin: 0;
+    background: var(--code-bg);
+    border-radius: 8px;
+    color: var(--text-color);
+}
+
+.raw-source code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    line-height: inherit;
+}
+
 /* Print styles */
 @media print {
     :root {
