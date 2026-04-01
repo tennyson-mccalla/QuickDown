@@ -2466,10 +2466,11 @@ extension AppDelegate {
         showTabBar()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self = self else { return }
-            // Only hide if mouse isn't currently over the bar
-            if self.tabBarView.alphaValue > 0 {
-                self.hideTabBar()
-            }
+            // Only hide if mouse isn't currently over the tab bar or tracking zone
+            let mouseLocation = self.window.mouseLocationOutsideOfEventStream
+            let barFrame = self.tabBarView.convert(self.tabBarView.bounds, to: nil)
+            guard !barFrame.contains(mouseLocation) else { return }
+            self.hideTabBar()
         }
     }
 }
