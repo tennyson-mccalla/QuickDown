@@ -770,7 +770,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
 
-                let html = self.generateHTML(markdown: content)
+                let isRaw = self.openFiles[self.activeFileIndex].isRawMode
+                let html: String
+                if isRaw {
+                    html = self.generateRawHTML(source: content)
+                } else {
+                    html = self.generateHTML(markdown: content)
+                }
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
@@ -778,6 +784,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     guard let self = self else { return }
                     self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
+
+                self.updateRawModeIndicator()
             } catch {
                 // Silently fail on reload errors - file might be mid-save
             }
@@ -1515,6 +1523,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         zoomResetItem.target = self
         viewMenu.addItem(zoomResetItem)
 
+        viewMenu.addItem(NSMenuItem.separator())
+
+        let rawModeItem = NSMenuItem(title: "Toggle Raw Source", action: #selector(toggleRawModeAction(_:)), keyEquivalent: "u")
+        rawModeItem.target = self
+        rawModeItem.keyEquivalentModifierMask = [.command]
+        viewMenu.addItem(rawModeItem)
+
         viewMenuItem.submenu = viewMenu
         mainMenu.addItem(viewMenuItem)
 
@@ -1627,6 +1642,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         applyFontScale()
     }
 
+    @objc func toggleRawModeAction(_ sender: Any?) {
+        toggleRawMode()
+    }
+
     private func applyFontScale() {
         webView?.evaluateJavaScript("document.body.style.fontSize = '\(fontScale * 16)px'")
     }
@@ -1716,6 +1735,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // MARK: - Menu Validation
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleRawModeAction(_:)) {
+            if !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode {
+                menuItem.title = "Show Rendered Preview"
+            } else {
+                menuItem.title = "Show Raw Source"
+            }
+            return currentFileURL != nil
+        }
         if menuItem.action == #selector(exportPDFAction(_:)) ||
            menuItem.action == #selector(exportHTMLAction(_:)) ||
            menuItem.action == #selector(shareDocument(_:)) ||
@@ -1884,7 +1911,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tocTableView.reloadData()
             updateWordCount(content)
 
-            let html = generateHTML(markdown: content)
+            let html: String
+            if file.isRawMode {
+                html = generateRawHTML(source: content)
+            } else {
+                html = generateHTML(markdown: content)
+            }
             pendingScrollRestoreY = file.scrollY
             try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
             crossfadeTransition { [weak self] in
@@ -1895,7 +1927,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             showError("Failed to load file: \(error.localizedDescription)")
         }
 
-        // Update tab bar
+        // Update tab bar and raw mode indicator
+        updateRawModeIndicator()
+        tabBarView.activeTabRawMode = file.isRawMode
         updateTabBarVisibility()
     }
 
