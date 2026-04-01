@@ -1602,23 +1602,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // MARK: - Open from Finder / URL Scheme
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-
-        // Handle quickdown:// URL scheme
-        if url.scheme == "quickdown" {
-            if isSetupComplete {
-                handleQuickDownURL(url)
+        for url in urls {
+            if url.scheme == "quickdown" {
+                if isSetupComplete {
+                    handleQuickDownURL(url)
+                } else {
+                    pendingFileURL = url
+                }
+            } else if isSetupComplete {
+                openFile(url)
             } else {
                 pendingFileURL = url
             }
-            return
-        }
-
-        // Handle file URLs - defer if setup not complete
-        if isSetupComplete {
-            openFile(url)
-        } else {
-            pendingFileURL = url
         }
     }
 
