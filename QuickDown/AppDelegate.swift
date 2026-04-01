@@ -77,6 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var isSetupComplete = false
     private var pendingFileURLs: [URL] = []
     private var pendingScrollRestoreY: Double?
+    private var pendingScrollFraction: Double?
     private var snapshotOverlay: NSImageView?
 
     // Tab bar (added in Task 2)
@@ -780,6 +781,54 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             } catch {
                 // Silently fail on reload errors - file might be mid-save
             }
+        }
+    }
+
+    // MARK: - Raw Mode Toggle
+
+    private func toggleRawMode() {
+        guard !openFiles.isEmpty else { return }
+
+        openFiles[activeFileIndex].isRawMode.toggle()
+        let isRaw = openFiles[activeFileIndex].isRawMode
+        let file = openFiles[activeFileIndex]
+
+        do {
+            let content = try readFileWithFallbackEncoding(url: file.url)
+
+            let html: String
+            if isRaw {
+                html = generateRawHTML(source: content)
+            } else {
+                html = generateHTML(markdown: content)
+            }
+
+            // Save scroll position proportionally (raw and rendered have different heights)
+            webView?.evaluateJavaScript("""
+                (function() {
+                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                    return maxScroll > 0 ? window.scrollY / maxScroll : 0;
+                })()
+            """) { [weak self] result, _ in
+                guard let self = self else { return }
+
+                let scrollFraction = result as? Double ?? 0
+
+                do {
+                    try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
+                    self.pendingScrollFraction = scrollFraction
+                    self.crossfadeTransition { [weak self] in
+                        guard let self = self else { return }
+                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+                    }
+                } catch {
+                    self.showError("Failed to toggle raw mode: \(error.localizedDescription)")
+                }
+
+                self.updateTabBarVisibility()
+            }
+        } catch {
+            showError("Failed to read file: \(error.localizedDescription)")
         }
     }
 
@@ -2006,7 +2055,19 @@ extension AppDelegate: WKNavigationDelegate {
             }
         }
 
-        if let scrollY = pendingScrollRestoreY {
+        if let fraction = pendingScrollFraction {
+            pendingScrollFraction = nil
+            pendingScrollRestoreY = nil
+            // Proportional scroll: compute absolute position from fraction
+            webView.evaluateJavaScript("""
+                (function() {
+                    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+                    window.scrollTo(0, maxScroll > 0 ? \(fraction) * maxScroll : 0);
+                })()
+            """) { _, _ in
+                DispatchQueue.main.async { startFade() }
+            }
+        } else if let scrollY = pendingScrollRestoreY {
             pendingScrollRestoreY = nil
             // Scroll first, then fade — ensures content is at correct position before reveal
             webView.evaluateJavaScript("window.scrollTo(0, \(scrollY))") { _, _ in
@@ -2048,7 +2109,7 @@ extension AppDelegate: PillTabBarDelegate {
     }
 
     func tabBar(_ tabBar: PillTabBarView, didClickActiveTabAt index: Int) {
-        // Raw mode toggle — implemented in feature/raw-mode branch
+        toggleRawMode()
     }
 }
 
