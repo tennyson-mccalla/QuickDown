@@ -47,11 +47,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var fileDescriptor: Int32 = -1
     private var reloadDebounceWorkItem: DispatchWorkItem?
 
-    // Backward-compat: reads/writes active file's content hash
-    private var lastContentHash: Int {
-        get { openFiles.isEmpty ? 0 : openFiles[activeFileIndex].contentHash }
-        set { if !openFiles.isEmpty { openFiles[activeFileIndex].contentHash = newValue } }
-    }
     private let tempHTMLURL = FileManager.default.temporaryDirectory
         .appendingPathComponent("quickdown-preview.html")
 
@@ -80,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // Track setup state for deferred file opens
     private var isSetupComplete = false
-    private var pendingFileURL: URL?
+    private var pendingFileURLs: [URL] = []
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
 
@@ -130,9 +125,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         // Mark setup complete and open any pending file
         isSetupComplete = true
-        if let pendingURL = pendingFileURL {
-            pendingFileURL = nil
-            openFile(pendingURL)
+        if !pendingFileURLs.isEmpty {
+            let urls = pendingFileURLs
+            pendingFileURLs = []
+            for url in urls {
+                openFile(url)
+            }
         }
     }
 
@@ -733,7 +731,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
-                self.crossfadeTransition {
+                self.crossfadeTransition { [weak self] in
+                    guard let self = self else { return }
                     self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
             } catch {
@@ -1607,12 +1606,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 if isSetupComplete {
                     handleQuickDownURL(url)
                 } else {
-                    pendingFileURL = url
+                    pendingFileURLs.append(url)
                 }
             } else if isSetupComplete {
                 openFile(url)
             } else {
-                pendingFileURL = url
+                pendingFileURLs.append(url)
             }
         }
     }
@@ -1675,7 +1674,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
             } else {
-                pendingFileURL = tempFileURL
+                pendingFileURLs.append(tempFileURL)
             }
         } catch let writeError {
             error.pointee = "Failed to create preview: \(writeError.localizedDescription)" as NSString
@@ -1689,6 +1688,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         if shouldShow {
             tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
+            tabBarView.scrollToActiveTab()
         }
     }
 
@@ -1745,7 +1745,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             let html = generateHTML(markdown: content)
             pendingScrollRestoreY = file.scrollY
             try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-            crossfadeTransition {
+            crossfadeTransition { [weak self] in
+                guard let self = self else { return }
                 self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
             }
         } catch {
