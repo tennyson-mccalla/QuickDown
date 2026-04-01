@@ -11,26 +11,35 @@ class PillTabBarView: NSView {
     private var segments: [TabSegment] = []
     private(set) var activeIndex: Int = 0
 
-    var pillBackgroundColor: NSColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5) {
-        didSet { needsDisplay = true; updateSegmentColors() }
+    var barBackgroundColor: NSColor = NSColor.windowBackgroundColor {
+        didSet { needsDisplay = true }
     }
-    var activeSegmentColor: NSColor = NSColor.controlAccentColor.withAlphaComponent(0.2) {
-        didSet { updateSegmentColors() }
+    var activeSegmentColor: NSColor = NSColor.controlAccentColor {
+        didSet { needsDisplay = true }
     }
     var textColor: NSColor = .labelColor {
+        didSet { segments.forEach { $0.textColor = textColor } }
+    }
+    var activeTextColor: NSColor = .white {
         didSet { updateSegmentColors() }
     }
     var separatorColor: NSColor = NSColor.separatorColor {
         didSet { needsDisplay = true }
     }
     var activeTabRawMode: Bool = false {
-        didSet { updateSegmentColors() }
+        didSet { needsDisplay = true }
     }
 
     private let scrollView: NSScrollView
     private let stackView: NSStackView
     private let segmentHeight: CGFloat = 26
     private let barPadding: CGFloat = 4
+    private let cornerRadius: CGFloat = 6
+    private var hoverTrackingArea: NSTrackingArea?
+    private var widthConstraint: NSLayoutConstraint?
+
+    /// Called when mouse enters/exits the tab bar itself (for auto-hide coordination)
+    var onMouseInside: ((Bool) -> Void)?
 
     override init(frame frameRect: NSRect) {
         scrollView = NSScrollView(frame: .zero)
@@ -48,6 +57,15 @@ class PillTabBarView: NSView {
 
     private func setupViews() {
         wantsLayer = true
+        layer?.masksToBounds = false
+
+        // Shadow for floating appearance
+        shadow = NSShadow()
+        layer?.shadowColor = NSColor.black.withAlphaComponent(0.3).cgColor
+        layer?.shadowOpacity = 1
+        layer?.shadowRadius = 8
+        layer?.shadowOffset = NSSize(width: 0, height: -2)
+
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasHorizontalScroller = false
         scrollView.hasVerticalScroller = false
@@ -56,7 +74,7 @@ class PillTabBarView: NSView {
         addSubview(scrollView)
 
         stackView.orientation = .horizontal
-        stackView.spacing = 1
+        stackView.spacing = 0
         stackView.alignment = .centerY
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stackView
@@ -75,10 +93,61 @@ class PillTabBarView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let pillRect = bounds.insetBy(dx: 2, dy: 2)
-        let path = NSBezierPath(roundedRect: pillRect, xRadius: segmentHeight / 2, yRadius: segmentHeight / 2)
-        pillBackgroundColor.setFill()
-        path.fill()
+
+        let barRect = bounds
+        let barPath = NSBezierPath(roundedRect: barRect, xRadius: cornerRadius, yRadius: cornerRadius)
+
+        // Background with subtle border
+        barBackgroundColor.setFill()
+        barPath.fill()
+
+        NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
+        barPath.lineWidth = 0.5
+        barPath.stroke()
+
+        // Active segment highlight
+        if activeIndex < segments.count {
+            let segment = segments[activeIndex]
+            guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { return }
+
+            NSGraphicsContext.saveGraphicsState()
+            barPath.addClip()
+
+            let highlightColor = activeTabRawMode
+                ? (NSColor.systemOrange)
+                : activeSegmentColor
+            let highlightRect = segFrame.insetBy(dx: 2, dy: 2)
+            let highlightPath = NSBezierPath(roundedRect: highlightRect, xRadius: cornerRadius - 2, yRadius: cornerRadius - 2)
+            highlightColor.setFill()
+            highlightPath.fill()
+
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        // Dividers between inactive segments (skip around active)
+        for i in 0..<(segments.count - 1) {
+            if i == activeIndex || i + 1 == activeIndex { continue }
+
+            let segment = segments[i]
+            guard let segFrame = segment.superview?.convert(segment.frame, to: self) else { continue }
+
+            let sepX = segFrame.maxX
+            let sepTop = barRect.minY + 7
+            let sepBottom = barRect.maxY - 7
+
+            separatorColor.setStroke()
+            let sepPath = NSBezierPath()
+            sepPath.move(to: NSPoint(x: sepX, y: sepTop))
+            sepPath.line(to: NSPoint(x: sepX, y: sepBottom))
+            sepPath.lineWidth = 1
+            sepPath.stroke()
+        }
+    }
+
+    private func updateSegmentColors() {
+        for (i, segment) in segments.enumerated() {
+            segment.textColor = (i == activeIndex) ? activeTextColor : textColor
+        }
     }
 
     func setTabs(_ files: [FileState], activeIndex: Int) {
@@ -109,18 +178,44 @@ class PillTabBarView: NSView {
             }
         }
         updateSegmentColors()
+        needsDisplay = true
+        updateWidthConstraint()
     }
 
-    private func updateSegmentColors() {
-        for (i, segment) in segments.enumerated() {
-            if i == activeIndex {
-                segment.backgroundColor = activeTabRawMode
-                    ? activeSegmentColor.blended(withFraction: 0.3, of: NSColor.systemOrange) ?? activeSegmentColor
-                    : activeSegmentColor
-            } else {
-                segment.backgroundColor = .clear
-            }
-            segment.textColor = textColor
+    private func updateWidthConstraint() {
+        stackView.layoutSubtreeIfNeeded()
+        let contentWidth = stackView.fittingSize.width + barPadding * 2
+        let maxWidth: CGFloat = (superview?.bounds.width ?? 600) - 32
+        let targetWidth = min(contentWidth, maxWidth)
+
+        if let existing = widthConstraint {
+            existing.constant = targetWidth
+        } else {
+            widthConstraint = widthAnchor.constraint(equalToConstant: targetWidth)
+            widthConstraint?.isActive = true
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = hoverTrackingArea { removeTrackingArea(existing) }
+        hoverTrackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil
+        )
+        addTrackingArea(hoverTrackingArea!)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if event.trackingArea == hoverTrackingArea {
+            onMouseInside?(true)
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if event.trackingArea == hoverTrackingArea {
+            onMouseInside?(false)
         }
     }
 
@@ -134,7 +229,6 @@ class PillTabBarView: NSView {
 class TabSegment: NSView {
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
-    var backgroundColor: NSColor = .clear { didSet { needsDisplay = true } }
     var textColor: NSColor = .labelColor { didSet { label.textColor = textColor } }
 
     private let label: NSTextField
@@ -155,9 +249,6 @@ class TabSegment: NSView {
     }
 
     private func setupViews(filename: String, isActive: Bool) {
-        wantsLayer = true
-        layer?.cornerRadius = 12
-
         label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
         label.isEditable = false
@@ -194,15 +285,6 @@ class TabSegment: NSView {
     func update(filename: String, index: Int, isActive: Bool) {
         self.index = index
         label.stringValue = filename
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        if backgroundColor != .clear {
-            let path = NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12)
-            backgroundColor.setFill()
-            path.fill()
-        }
     }
 
     override func updateTrackingAreas() {

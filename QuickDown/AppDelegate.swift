@@ -2409,13 +2409,13 @@ extension AppDelegate: PillTabBarDelegate {
 // MARK: - Tab Bar Auto-Hide
 
 extension AppDelegate {
-    override func mouseEntered(with event: NSEvent) {
+    @objc func mouseEntered(with event: NSEvent) {
         guard let userData = event.trackingArea?.userInfo as? [String: Bool],
               userData["tabBarHover"] == true else { return }
         showTabBar()
     }
 
-    override func mouseExited(with event: NSEvent) {
+    @objc func mouseExited(with event: NSEvent) {
         guard let userData = event.trackingArea?.userInfo as? [String: Bool],
               userData["tabBarHover"] == true else { return }
         hideTabBar()
