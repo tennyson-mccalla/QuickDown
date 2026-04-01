@@ -79,6 +79,14 @@ class PillTabBarView: NSView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = stackView
 
+        // Redraw highlight when scroll position changes
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(scrollViewDidScroll),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: barPadding),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -barPadding),
@@ -194,6 +202,10 @@ class PillTabBarView: NSView {
             widthConstraint = widthAnchor.constraint(equalToConstant: targetWidth)
             widthConstraint?.isActive = true
         }
+    }
+
+    @objc private func scrollViewDidScroll() {
+        needsDisplay = true
     }
 
     override func updateTrackingAreas() {
