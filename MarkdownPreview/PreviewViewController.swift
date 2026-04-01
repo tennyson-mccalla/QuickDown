@@ -30,7 +30,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
             let html = generateHTML(markdown: markdownContent, baseDirectoryURL: baseDirectory)
 
             let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("quickdown-ql-preview.html")
+                .appendingPathComponent("quickdown-ql-\(UUID().uuidString).html")
             try html.write(to: tempURL, atomically: true, encoding: .utf8)
             webView.loadFileURL(tempURL, allowingReadAccessTo: baseDirectory)
 
@@ -78,7 +78,8 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
         let baseTag: String
         if let baseDir = baseDirectoryURL {
-            baseTag = "<base href=\"\(baseDir.absoluteString)\">"
+            let escapedURL = baseDir.absoluteString.replacingOccurrences(of: "\"", with: "%22")
+            baseTag = "<base href=\"\(escapedURL)\">"
         } else {
             baseTag = ""
         }

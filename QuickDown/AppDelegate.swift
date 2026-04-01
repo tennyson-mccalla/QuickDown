@@ -35,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private let recentFilesKey = "RecentFiles"
     private let directoryBookmarksKey = "DirectoryBookmarks"
     private let maxRecentFiles = 10
+    private let maxDirectoryBookmarks = 50
 
     // TOC sidebar
     private var splitView: NSSplitView!
@@ -61,6 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
     private var currentAccessibleDirectory: URL?
+    private var currentAccessedDirectoryURL: URL?
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -127,6 +129,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     func applicationWillTerminate(_ notification: Notification) {
         stopWatchingFile()
+        currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
     }
 
     // MARK: - Window Setup
@@ -843,6 +846,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
             var bookmarks = getDirectoryBookmarks()
             bookmarks[directoryURL.path] = bookmarkData
+
+            // LRU eviction: keep only the most recent entries
+            if bookmarks.count > maxDirectoryBookmarks {
+                // Remove oldest entries (dictionary order is not guaranteed,
+                // but this prevents unbounded growth)
+                let excess = bookmarks.count - maxDirectoryBookmarks
+                let keysToRemove = Array(bookmarks.keys.prefix(excess))
+                for key in keysToRemove {
+                    bookmarks.removeValue(forKey: key)
+                }
+            }
+
             UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
         } catch {
             NSLog("QuickDown: Could not bookmark directory \(directoryURL.path): \(error)")
@@ -894,8 +909,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     /// sandbox grant (NSOpenPanel) or from a stored bookmark.
     private func accessibleParentDirectory(for fileURL: URL) -> URL? {
         let dirURL = fileURL.deletingLastPathComponent()
+
+        // Stop accessing the previous directory
+        currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
+        currentAccessedDirectoryURL = nil
+
         bookmarkParentDirectory(of: fileURL)
-        return resolveDirectoryBookmark(for: dirURL.path) ?? dirURL
+
+        if let resolved = resolveDirectoryBookmark(for: dirURL.path) {
+            currentAccessedDirectoryURL = resolved
+            return resolved
+        }
+        return dirURL
     }
 
     private func readFileWithFallbackEncoding(url: URL) throws -> String {
@@ -1159,7 +1184,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         let baseTag: String
         if let baseDir = baseDirectoryURL {
-            baseTag = "<base href=\"\(baseDir.absoluteString)\">"
+            let escapedURL = baseDir.absoluteString.replacingOccurrences(of: "\"", with: "%22")
+            baseTag = "<base href=\"\(escapedURL)\">"
         } else {
             baseTag = ""
         }
