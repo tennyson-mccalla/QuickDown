@@ -10,14 +10,20 @@ import WebKit
 class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
+            NSLog("QuickDown SchemeHandler: bad URL")
             urlSchemeTask.didFailWithError(URLError(.badURL))
             return
         }
 
+        NSLog("QuickDown SchemeHandler: request for %@", url.absoluteString)
+
         let filePath = url.path
         let fileURL = URL(fileURLWithPath: filePath)
 
+        NSLog("QuickDown SchemeHandler: resolved path = %@", filePath)
+
         guard FileManager.default.fileExists(atPath: filePath) else {
+            NSLog("QuickDown SchemeHandler: FILE NOT FOUND at %@", filePath)
             urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
@@ -30,11 +36,13 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
             } else {
                 mimeType = "application/octet-stream"
             }
+            NSLog("QuickDown SchemeHandler: serving %@ (%d bytes, %@)", filePath, data.count, mimeType)
             let response = URLResponse(url: url, mimeType: mimeType, expectedContentLength: data.count, textEncodingName: nil)
             urlSchemeTask.didReceive(response)
             urlSchemeTask.didReceive(data)
             urlSchemeTask.didFinish()
         } catch {
+            NSLog("QuickDown SchemeHandler: read error for %@: %@", filePath, error.localizedDescription)
             urlSchemeTask.didFailWithError(error)
         }
     }
@@ -943,8 +951,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
     }
 
-    /// Returns the parent directory URL with sandbox access, either from the current
-    /// sandbox grant (NSOpenPanel) or from a stored bookmark.
+    /// Returns the parent directory URL with sandbox access, either from a stored
+    /// bookmark or by prompting the user to grant access via NSOpenPanel.
     private func accessibleParentDirectory(for fileURL: URL) -> URL? {
         let dirURL = fileURL.deletingLastPathComponent()
 
@@ -952,13 +960,56 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         currentAccessedDirectoryURL?.stopAccessingSecurityScopedResource()
         currentAccessedDirectoryURL = nil
 
+        // Try existing bookmark first
         bookmarkParentDirectory(of: fileURL)
 
         if let resolved = resolveDirectoryBookmark(for: dirURL.path) {
             currentAccessedDirectoryURL = resolved
             return resolved
         }
-        return dirURL
+
+        // Bookmark failed — prompt user to grant directory access
+        if let granted = requestDirectoryAccess(for: dirURL) {
+            currentAccessedDirectoryURL = granted
+            return granted
+        }
+
+        return nil
+    }
+
+    /// Shows an NSOpenPanel asking the user to grant access to a directory
+    /// so relative images can be displayed. Saves a bookmark on success.
+    private func requestDirectoryAccess(for directoryURL: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = directoryURL
+        panel.message = "QuickDown needs access to this folder to display images referenced in your Markdown file."
+        panel.prompt = "Grant Access"
+
+        guard panel.runModal() == .OK, let selectedURL = panel.url else {
+            return nil
+        }
+
+        // Save bookmark for future sessions
+        do {
+            let bookmarkData = try selectedURL.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            var bookmarks = getDirectoryBookmarks()
+            bookmarks[selectedURL.path] = bookmarkData
+            UserDefaults.standard.set(bookmarks, forKey: directoryBookmarksKey)
+        } catch {
+            NSLog("QuickDown: Could not bookmark granted directory: \(error)")
+        }
+
+        guard selectedURL.startAccessingSecurityScopedResource() else {
+            return nil
+        }
+        return selectedURL
     }
 
     private func readFileWithFallbackEncoding(url: URL) throws -> String {
@@ -1226,6 +1277,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             // bypassing WebKit's sandbox restrictions on file:// sub-resources.
             let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
             baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
+            NSLog("QuickDown: base tag = %@", baseTag)
         } else {
             baseTag = ""
         }
