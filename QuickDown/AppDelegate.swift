@@ -534,11 +534,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func loadHTMLInWebView(_ html: String, allowingAccessTo directory: URL? = nil) throws {
-        try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
-
         if let dir = directory {
-            webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: dir)
+            // Write the temp HTML inside the accessible directory so WebKit can
+            // reach both the HTML file and sibling assets (images, linked .md files)
+            // under a single allowingReadAccessTo grant.
+            let localTempURL = dir.appendingPathComponent(".quickdown-preview.html")
+            try html.write(to: localTempURL, atomically: true, encoding: .utf8)
+            webView?.loadFileURL(localTempURL, allowingReadAccessTo: dir)
         } else {
+            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
             webView?.loadFileURL(tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
         }
     }
@@ -698,14 +702,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
                 let html = self.generateHTML(markdown: content, baseDirectoryURL: self.currentAccessibleDirectory)
 
-                try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
+                let loadURL: URL
+                if let dir = self.currentAccessibleDirectory {
+                    let localTemp = dir.appendingPathComponent(".quickdown-preview.html")
+                    try html.write(to: localTemp, atomically: true, encoding: .utf8)
+                    loadURL = localTemp
+                } else {
+                    try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
+                    loadURL = self.tempHTMLURL
+                }
+                let accessDir = self.currentAccessibleDirectory ?? FileManager.default.temporaryDirectory
+
                 self.pendingScrollRestoreY = scrollY as? Double
                 self.crossfadeTransition {
-                    if let dir = self.currentAccessibleDirectory {
-                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: dir)
-                    } else {
-                        self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
-                    }
+                    self.webView?.loadFileURL(loadURL, allowingReadAccessTo: accessDir)
                 }
             } catch {
                 // Silently fail on reload errors - file might be mid-save
