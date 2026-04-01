@@ -825,7 +825,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     self.showError("Failed to toggle raw mode: \(error.localizedDescription)")
                 }
 
+                self.updateRawModeIndicator()
                 self.updateTabBarVisibility()
+                self.tabBarView.activeTabRawMode = self.openFiles[self.activeFileIndex].isRawMode
             }
         } catch {
             showError("Failed to read file: \(error.localizedDescription)")
@@ -1827,6 +1829,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         if shouldShow {
             tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
+            tabBarView.activeTabRawMode = !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode
             tabBarView.scrollToActiveTab()
         }
     }
@@ -2019,6 +2022,17 @@ extension AppDelegate: NSTableViewDataSource, NSTableViewDelegate {
 
         wordCountLabel.stringValue = "\(wordStr) words  ·  \(charStr) characters"
         wordCountLabel.isHidden = false
+    }
+
+    private func updateRawModeIndicator() {
+        guard !openFiles.isEmpty else { return }
+
+        if openFiles[activeFileIndex].isRawMode {
+            let current = wordCountLabel.stringValue
+            if !current.hasPrefix("RAW") {
+                wordCountLabel.stringValue = "RAW  \u{00B7}  \(current)"
+            }
+        }
     }
 }
 
