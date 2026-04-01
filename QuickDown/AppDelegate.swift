@@ -17,17 +17,36 @@ struct TOCItem {
     let id: String
 }
 
+struct FileState {
+    let url: URL
+    var contentHash: Int = 0
+    var scrollY: Double = 0
+    var sidebarVisible: Bool = false
+    var fontScale: Double = 1.0
+    var isRawMode: Bool = false
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSearchFieldDelegate {
 
     var window: NSWindow!
     var webView: WKWebView?  // Lazily initialized when first file is opened
     var dropZoneLabel: NSTextField!
     private var mainContentView: DropView!  // Container for lazy WebView
-    var currentFileURL: URL?
+
+    // Tab state
+    private var openFiles: [FileState] = []
+    private var activeFileIndex: Int = 0
+
+    // Convenience accessor for the active file (nil when no files open)
+    var currentFileURL: URL? {
+        guard !openFiles.isEmpty else { return nil }
+        return openFiles[activeFileIndex].url
+    }
+
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private var reloadDebounceWorkItem: DispatchWorkItem?
-    private var lastContentHash: Int = 0
+
     private let tempHTMLURL = FileManager.default.temporaryDirectory
         .appendingPathComponent("quickdown-preview.html")
 
@@ -56,9 +75,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     // Track setup state for deferred file opens
     private var isSetupComplete = false
-    private var pendingFileURL: URL?
+    private var pendingFileURLs: [URL] = []
     private var pendingScrollRestoreY: Double?
     private var snapshotOverlay: NSImageView?
+
+    // Tab bar (added in Task 2)
+    private var tabBarView: PillTabBarView!
+    private var tabBarHeightConstraint: NSLayoutConstraint!
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -102,9 +125,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         // Mark setup complete and open any pending file
         isSetupComplete = true
-        if let pendingURL = pendingFileURL {
-            pendingFileURL = nil
-            openFile(pendingURL)
+        if !pendingFileURLs.isEmpty {
+            let urls = pendingFileURLs
+            pendingFileURLs = []
+            for url in urls {
+                openFile(url)
+            }
         }
     }
 
@@ -187,6 +213,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(searchBar)
 
+        // Setup tab bar (hidden until 2+ files are open)
+        tabBarView = PillTabBarView(frame: NSRect(x: 0, y: 0, width: 900, height: 34))
+        tabBarView.translatesAutoresizingMaskIntoConstraints = false
+        tabBarView.delegate = self
+        tabBarView.isHidden = true
+        containerView.addSubview(tabBarView)
+
+        tabBarHeightConstraint = tabBarView.heightAnchor.constraint(equalToConstant: 0)
+
         splitView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(splitView)
 
@@ -207,7 +242,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             searchBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             searchBarHeightConstraint,
 
-            splitView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            tabBarView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            tabBarView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            tabBarView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            tabBarHeightConstraint,
+
+            splitView.topAnchor.constraint(equalTo: tabBarView.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             splitView.bottomAnchor.constraint(equalTo: wordCountLabel.topAnchor),
@@ -268,6 +308,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     @objc func toggleSidebar(_ sender: Any?) {
         isSidebarVisible.toggle()
         UserDefaults.standard.set(isSidebarVisible, forKey: sidebarVisibleKey)
+
+        // Save to active tab
+        if !openFiles.isEmpty {
+            openFiles[activeFileIndex].sidebarVisible = isSidebarVisible
+        }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
@@ -534,48 +579,88 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     func openFile(_ url: URL) {
-        // Safety check - window must exist
         guard window != nil else {
             NSLog("QuickDown: openFile called but window is nil")
             return
         }
 
-        // Stop watching the previous file
-        stopWatchingFile()
+        // If this file is already open, switch to its tab
+        if let existingIndex = openFiles.firstIndex(where: { $0.url.path == url.path }) {
+            switchToTab(existingIndex)
+            return
+        }
 
-        // Lazily create WebView on first file open
         ensureWebViewExists()
 
-        currentFileURL = url
-        window.title = "QuickDown — \(url.lastPathComponent)"
-        window.representedURL = url
+        // Save current tab state before adding new tab
+        let addAndLoad = { [weak self] in
+            guard let self = self else { return }
 
-        do {
-            let content = try readFileWithFallbackEncoding(url: url)
+            // Create new file state, inheriting current sidebar/font settings
+            var newFile = FileState(url: url)
+            newFile.sidebarVisible = self.isSidebarVisible
+            newFile.fontScale = self.fontScale
 
-            // Store content hash for change detection
-            lastContentHash = content.hashValue
+            // Add tab after the current active tab
+            let insertIndex = self.openFiles.isEmpty ? 0 : self.activeFileIndex + 1
+            self.openFiles.insert(newFile, at: insertIndex)
+            self.activeFileIndex = insertIndex
 
-            // Parse TOC from markdown
-            tocItems = parseTOC(from: content)
-            tocTableView.reloadData()
+            self.loadTab(at: insertIndex)
 
-            let html = generateHTML(markdown: content)
+            self.webView?.isHidden = false
+            self.dropZoneLabel.isHidden = true
 
-            try loadHTMLInWebView(html)
-
-            webView?.isHidden = false
-            dropZoneLabel.isHidden = true
-            updateWordCount(content)
-
-            // Start watching for changes
-            startWatchingFile(url)
-
-            // Add to recent files
-            addToRecentFiles(url)
-        } catch {
-            showError("Failed to open file: \(error.localizedDescription)")
+            self.addToRecentFiles(url)
         }
+
+        if openFiles.isEmpty {
+            addAndLoad()
+        } else {
+            saveCurrentTabState { addAndLoad() }
+        }
+    }
+
+    /// Opens multiple files at once — adds all as tabs, then loads only the last one.
+    /// Avoids the cascading async crossfade issue of calling openFile() in a loop.
+    func openFiles(_ urls: [URL]) {
+        guard !urls.isEmpty, window != nil else { return }
+        if urls.count == 1 {
+            openFile(urls[0])
+            return
+        }
+
+        ensureWebViewExists()
+
+        // Filter out already-open files and deduplicate
+        let newURLs = urls.filter { url in
+            !openFiles.contains(where: { $0.url.path == url.path })
+        }
+        guard !newURLs.isEmpty else {
+            // All files already open — just activate the last one
+            if let last = urls.last,
+               let idx = openFiles.firstIndex(where: { $0.url.path == last.path }) {
+                switchToTab(idx)
+            }
+            return
+        }
+
+        // Add all new files as tabs silently (no loading/crossfade)
+        for url in newURLs {
+            var newFile = FileState(url: url)
+            newFile.sidebarVisible = isSidebarVisible
+            newFile.fontScale = fontScale
+            openFiles.append(newFile)
+            addToRecentFiles(url)
+        }
+
+        // Load only the last added file
+        let lastIndex = openFiles.count - 1
+        activeFileIndex = lastIndex
+        loadTab(at: lastIndex)
+
+        webView?.isHidden = false
+        dropZoneLabel.isHidden = true
     }
 
     private func parseTOC(from markdown: String) -> [TOCItem] {
@@ -665,23 +750,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func reloadCurrentFile() {
-        guard let url = currentFileURL else { return }
+        guard !openFiles.isEmpty else { return }
+        let url = openFiles[activeFileIndex].url
 
-        // Save scroll position before reload
         webView?.evaluateJavaScript("window.scrollY") { [weak self] (scrollY, _) in
-            guard let self = self else { return }
+            guard let self = self, !self.openFiles.isEmpty else { return }
 
             do {
                 let content = try self.readFileWithFallbackEncoding(url: url)
 
-                // Skip re-render if content hasn't changed
                 let contentHash = content.hashValue
-                if contentHash == self.lastContentHash {
+                if contentHash == self.openFiles[self.activeFileIndex].contentHash {
                     return
                 }
-                self.lastContentHash = contentHash
+                self.openFiles[self.activeFileIndex].contentHash = contentHash
 
-                // Update TOC and word count
                 self.tocItems = self.parseTOC(from: content)
                 self.tocTableView.reloadData()
                 self.updateWordCount(content)
@@ -690,7 +773,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
                 try html.write(to: self.tempHTMLURL, atomically: true, encoding: .utf8)
                 self.pendingScrollRestoreY = scrollY as? Double
-                self.crossfadeTransition {
+                self.crossfadeTransition { [weak self] in
+                    guard let self = self else { return }
                     self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
                 }
             } catch {
@@ -1257,7 +1341,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         fileMenu.addItem(shareItem)
 
         fileMenu.addItem(NSMenuItem.separator())
-        fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let closeTabItem = NSMenuItem(title: "Close Tab", action: #selector(closeActiveTab(_:)), keyEquivalent: "w")
+        closeTabItem.target = self
+        fileMenu.addItem(closeTabItem)
+
+        let nextTabItem = NSMenuItem(title: "Next Tab", action: #selector(selectNextTab(_:)), keyEquivalent: "}")
+        nextTabItem.target = self
+        nextTabItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(nextTabItem)
+
+        let prevTabItem = NSMenuItem(title: "Previous Tab", action: #selector(selectPreviousTab(_:)), keyEquivalent: "{")
+        prevTabItem.target = self
+        prevTabItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(prevTabItem)
         fileMenuItem.submenu = fileMenu
         mainMenu.addItem(fileMenuItem)
 
@@ -1352,12 +1448,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         panel.allowedContentTypes = [.init(filenameExtension: "md")!,
                                       .init(filenameExtension: "markdown")!,
                                       .plainText]
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
 
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            self?.openFile(url)
+            guard response == .OK else { return }
+            self?.openFiles(panel.urls)
         }
     }
 
@@ -1383,7 +1479,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         // Update window background to match theme
         updateWindowBackground()
 
-        guard let webView = webView, !webView.isHidden, snapshotOverlay == nil else {
+        // Clear any stuck snapshot overlay (can happen after rapid multi-file open)
+        if let overlay = snapshotOverlay {
+            overlay.removeFromSuperview()
+            snapshotOverlay = nil
+        }
+
+        guard let webView = webView, !webView.isHidden else {
             webView?.evaluateJavaScript("applyTheme('\(theme.rawValue.lowercased())')")
             return
         }
@@ -1418,16 +1520,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     /// the overlay out in didFinish once new content is ready.
     @objc func zoomIn(_ sender: Any?) {
         fontScale += fontScaleStep
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
     @objc func zoomOut(_ sender: Any?) {
         fontScale -= fontScaleStep
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
     @objc func zoomReset(_ sender: Any?) {
         fontScale = 1.0
+        if !openFiles.isEmpty { openFiles[activeFileIndex].fontScale = fontScale }
         applyFontScale()
     }
 
@@ -1470,6 +1575,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             wordCountLabel.textColor = .tertiaryLabelColor
             themeLabelColor = nil
             tocTableView.reloadData()
+            tabBarView.pillBackgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.3)
+            tabBarView.activeSegmentColor = NSColor.controlAccentColor.withAlphaComponent(0.15)
+            tabBarView.textColor = .labelColor
+            tabBarView.separatorColor = .separatorColor
             return
         }
 
@@ -1507,6 +1616,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         wordCountLabel.textColor = labelColor
         themeLabelColor = labelColor
         tocTableView.reloadData()
+        tabBarView.pillBackgroundColor = backgroundColor.blended(withFraction: 0.1, of: labelColor) ?? backgroundColor
+        tabBarView.activeSegmentColor = backgroundColor.blended(withFraction: 0.2, of: labelColor) ?? backgroundColor
+        tabBarView.textColor = labelColor
+        tabBarView.separatorColor = labelColor.withAlphaComponent(0.2)
     }
 
     // MARK: - Menu Validation
@@ -1520,29 +1633,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
            menuItem.action == #selector(zoomReset(_:)) {
             return currentFileURL != nil
         }
+        if menuItem.action == #selector(selectNextTab(_:)) ||
+           menuItem.action == #selector(selectPreviousTab(_:)) {
+            return openFiles.count > 1
+        }
+        if menuItem.action == #selector(closeActiveTab(_:)) {
+            menuItem.title = openFiles.isEmpty ? "Close Window" : "Close Tab"
+            return true
+        }
         return true
     }
 
     // MARK: - Open from Finder / URL Scheme
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-
-        // Handle quickdown:// URL scheme
-        if url.scheme == "quickdown" {
-            if isSetupComplete {
-                handleQuickDownURL(url)
+        var fileURLs: [URL] = []
+        for url in urls {
+            if url.scheme == "quickdown" {
+                if isSetupComplete {
+                    handleQuickDownURL(url)
+                } else {
+                    pendingFileURLs.append(url)
+                }
+            } else if isSetupComplete {
+                fileURLs.append(url)
             } else {
-                pendingFileURL = url
+                pendingFileURLs.append(url)
             }
-            return
         }
-
-        // Handle file URLs - defer if setup not complete
-        if isSetupComplete {
-            openFile(url)
-        } else {
-            pendingFileURL = url
+        if !fileURLs.isEmpty {
+            openFiles(fileURLs)
         }
     }
 
@@ -1604,11 +1724,145 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
             } else {
-                pendingFileURL = tempFileURL
+                pendingFileURLs.append(tempFileURL)
             }
         } catch let writeError {
             error.pointee = "Failed to create preview: \(writeError.localizedDescription)" as NSString
         }
+    }
+
+    private func updateTabBarVisibility() {
+        let shouldShow = openFiles.count > 1
+        tabBarView.isHidden = !shouldShow
+        tabBarHeightConstraint.constant = shouldShow ? 34 : 0
+
+        if shouldShow {
+            tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
+            tabBarView.scrollToActiveTab()
+        }
+    }
+
+    /// Captures the current tab's transient state (scroll position) before switching away.
+    private func saveCurrentTabState(completion: @escaping () -> Void) {
+        guard !openFiles.isEmpty else {
+            completion()
+            return
+        }
+
+        webView?.evaluateJavaScript("window.scrollY") { [weak self] scrollY, _ in
+            guard let self = self, !self.openFiles.isEmpty else {
+                completion()
+                return
+            }
+            if let y = scrollY as? Double {
+                self.openFiles[self.activeFileIndex].scrollY = y
+            }
+            completion()
+        }
+    }
+
+    /// Loads a tab's content into the WebView and restores its state.
+    private func loadTab(at index: Int) {
+        guard index >= 0 && index < openFiles.count else { return }
+
+        activeFileIndex = index
+        let file = openFiles[index]
+
+        window.title = "QuickDown — \(file.url.lastPathComponent)"
+        window.representedURL = file.url
+
+        // Restore per-tab sidebar state
+        isSidebarVisible = file.sidebarVisible
+        UserDefaults.standard.set(isSidebarVisible, forKey: sidebarVisibleKey)
+        tocScrollView.isHidden = !isSidebarVisible
+        splitView.setPosition(isSidebarVisible ? 200 : 0, ofDividerAt: 0)
+
+        // Restore per-tab font scale
+        fontScale = file.fontScale
+
+        // Stop watching previous file, start watching this one
+        stopWatchingFile()
+        startWatchingFile(file.url)
+
+        do {
+            let content = try readFileWithFallbackEncoding(url: file.url)
+            openFiles[index].contentHash = content.hashValue
+
+            tocItems = parseTOC(from: content)
+            tocTableView.reloadData()
+            updateWordCount(content)
+
+            let html = generateHTML(markdown: content)
+            pendingScrollRestoreY = file.scrollY
+            try html.write(to: tempHTMLURL, atomically: true, encoding: .utf8)
+            crossfadeTransition { [weak self] in
+                guard let self = self else { return }
+                self.webView?.loadFileURL(self.tempHTMLURL, allowingReadAccessTo: FileManager.default.temporaryDirectory)
+            }
+        } catch {
+            showError("Failed to load file: \(error.localizedDescription)")
+        }
+
+        // Update tab bar
+        updateTabBarVisibility()
+    }
+
+    private func switchToTab(_ index: Int) {
+        guard index != activeFileIndex, index >= 0, index < openFiles.count else { return }
+
+        saveCurrentTabState { [weak self] in
+            self?.loadTab(at: index)
+        }
+    }
+
+    private func closeTab(at index: Int) {
+        guard index >= 0 && index < openFiles.count else { return }
+
+        openFiles.remove(at: index)
+
+        if openFiles.isEmpty {
+            // No more tabs — return to drop zone
+            stopWatchingFile()
+            webView?.isHidden = true
+            dropZoneLabel.isHidden = false
+            window.title = "QuickDown"
+            window.representedURL = nil
+            wordCountLabel.isHidden = true
+            tocItems = []
+            tocTableView.reloadData()
+            activeFileIndex = 0
+            updateTabBarVisibility()
+            return
+        }
+
+        // Adjust active index
+        if activeFileIndex >= openFiles.count {
+            activeFileIndex = openFiles.count - 1
+        } else if index < activeFileIndex {
+            activeFileIndex -= 1
+        }
+
+        loadTab(at: activeFileIndex)
+    }
+
+    @objc func closeActiveTab(_ sender: Any?) {
+        if openFiles.isEmpty {
+            window.performClose(sender)
+        } else {
+            closeTab(at: activeFileIndex)
+        }
+    }
+
+    @objc func selectNextTab(_ sender: Any?) {
+        guard openFiles.count > 1 else { return }
+        let next = (activeFileIndex + 1) % openFiles.count
+        switchToTab(next)
+    }
+
+    @objc func selectPreviousTab(_ sender: Any?) {
+        guard openFiles.count > 1 else { return }
+        let prev = (activeFileIndex - 1 + openFiles.count) % openFiles.count
+        switchToTab(prev)
     }
 }
 
@@ -1739,6 +1993,22 @@ extension AppDelegate: NSSplitViewDelegate {
 
     func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
         return subview == tocScrollView
+    }
+}
+
+// MARK: - PillTabBarDelegate
+
+extension AppDelegate: PillTabBarDelegate {
+    func tabBar(_ tabBar: PillTabBarView, didSelectTabAt index: Int) {
+        switchToTab(index)
+    }
+
+    func tabBar(_ tabBar: PillTabBarView, didCloseTabAt index: Int) {
+        closeTab(at: index)
+    }
+
+    func tabBar(_ tabBar: PillTabBarView, didClickActiveTabAt index: Int) {
+        // Raw mode toggle — implemented in feature/raw-mode branch
     }
 }
 
