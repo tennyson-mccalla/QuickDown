@@ -2059,6 +2059,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             tabBarView.setTabs(openFiles, activeIndex: activeFileIndex)
             tabBarView.activeTabRawMode = !openFiles.isEmpty && openFiles[activeFileIndex].isRawMode
             tabBarView.scrollToActiveTab()
+            flashTabBar()
         } else {
             tabBarView.alphaValue = 0
         }
@@ -2439,6 +2440,19 @@ extension AppDelegate {
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             tabBarView.animator().alphaValue = 0
+        }
+    }
+
+    /// Briefly reveals the tab bar so the user knows tabs are available, then fades out.
+    private func flashTabBar() {
+        guard !tabBarView.isHidden else { return }
+        showTabBar()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self else { return }
+            // Only hide if mouse isn't currently over the bar
+            if self.tabBarView.alphaValue > 0 {
+                self.hideTabBar()
+            }
         }
     }
 }

@@ -249,6 +249,7 @@ class TabSegment: NSView {
     }
 
     private func setupViews(filename: String, isActive: Bool) {
+        toolTip = filename
         label.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
         label.isEditable = false
@@ -285,6 +286,7 @@ class TabSegment: NSView {
     func update(filename: String, index: Int, isActive: Bool) {
         self.index = index
         label.stringValue = filename
+        toolTip = filename
     }
 
     override func updateTrackingAreas() {
