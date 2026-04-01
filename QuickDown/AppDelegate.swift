@@ -1295,6 +1295,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         """
     }
 
+    private func generateRawHTML(source: String) -> String {
+        let highlightJS = loadResource("highlight.min", ext: "js")
+        let stylesCSS = loadResource("styles", ext: "css")
+        let githubCSS = loadResource("github.min", ext: "css")
+        let githubDarkCSS = loadResource("github-dark.min", ext: "css")
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>\(stylesCSS)</style>
+            <style id="hl-light">\(githubCSS)</style>
+            <style id="hl-dark">\(githubDarkCSS)</style>
+            \(themeScript)
+            <style>
+                body { padding: 24px; max-width: 900px; margin: 0 auto; }
+            </style>
+            <script>\(highlightJS)</script>
+        </head>
+        <body\(fontScale != 1.0 ? " style=\"font-size: \(fontScale * 16)px\"" : "")>
+            <pre class="raw-source"><code class="language-markdown">\(escapeHTMLEntities(source))</code></pre>
+            <script>
+                document.querySelectorAll('pre code').forEach(function(block) {
+                    hljs.highlightElement(block);
+                });
+            </script>
+        </body>
+        </html>
+        """
+    }
+
+    private func escapeHTMLEntities(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
     private func escapeForJavaScript(_ string: String) -> String {
         var result = string
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
