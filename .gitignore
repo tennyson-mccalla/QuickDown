@@ -1,3 +1,6 @@
+# Secrets
+.env
+
 # Xcode
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
