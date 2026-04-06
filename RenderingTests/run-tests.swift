@@ -241,6 +241,42 @@ let cases: [TestCase] = [
         let html = render("press <kbd>Cmd</kbd>+<kbd>S</kbd> to save")
         return mustContain(html, "<kbd>")
     },
+
+    TestCase(name: "bug #3: closing custom-element tag is escaped") {
+        let html = render("the open is <my-tag> and the close is </my-tag>.")
+        if html.contains("<my-tag>") || html.contains("</my-tag>") {
+            return .fail("custom-element tags rendered as raw HTML\n      got: \(truncate(html))")
+        }
+        let a = mustContain(html, "&lt;my-tag&gt;")
+        if !a.ok { return a }
+        return mustContain(html, "&lt;/my-tag&gt;")
+    },
+
+    TestCase(name: "bug #3: custom-element tag with attributes is escaped") {
+        let html = render("write <my-component foo=\"bar\" baz=\"qux\"> in your template")
+        if html.contains("<my-component") {
+            return .fail("custom-element with attributes rendered as raw HTML\n      got: \(truncate(html))")
+        }
+        return mustContain(html, "&lt;my-component")
+    },
+
+    TestCase(name: "bug #3: autolink to hyphenated domain is preserved") {
+        // False-positive guard: <https://my-site.example.com> is a CommonMark
+        // autolink. The hyphen lives in the domain, not the tag name region,
+        // so the escape regex must NOT match. Marked should turn it into an
+        // <a href> link.
+        let html = render("see <https://my-site.example.com> for details")
+        return mustContain(html, "href=\"https://my-site.example.com\"")
+    },
+
+    TestCase(name: "bug #3: hyphenated tag inside fenced code block is left alone") {
+        // The escape must skip code blocks — the existing regression test
+        // already covers this for the rendered HTML, but pin it explicitly
+        // for the new escape function so a future preprocessor change can't
+        // accidentally start mangling code samples.
+        let html = render("```\n<my-tag>literal</my-tag>\n```")
+        return mustContain(html, "&lt;my-tag&gt;")
+    },
 ]
 
 // MARK: - Runner

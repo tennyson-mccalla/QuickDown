@@ -34,8 +34,38 @@ var QDPreprocess = (function () {
         }).join('');
     }
 
+    // Escape angle-bracketed tokens whose tag name contains a hyphen — i.e.
+    // custom-element-shaped tokens like <local-jndi-name>, </my-tag>, or
+    // <foo-bar attr="x">. Real HTML5 element names never contain hyphens, so
+    // a hyphen in the tag name is a strong signal that the author meant the
+    // token as literal prose (e.g. discussing XML tags in documentation),
+    // not as inline HTML to render.
+    //
+    // Without this, marked.js passes such tokens through verbatim and the
+    // browser parses them as unknown custom elements with zero-width tag
+    // names — making the tag tokens visually disappear from the rendered
+    // output while their inner text survives. See bug #3.
+    //
+    // The escape skips fenced code blocks and inline code spans, and only
+    // matches when the token actually closes with `>` on the same paragraph.
+    // Autolinks like <https://my-site.com> are not affected because their
+    // tag-name region (`https`) contains no hyphen before the `:`.
+    function escapeCustomElementTags(md) {
+        var TAG_RE = /<\/?[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9-]*(?:\s[^>]*)?\/?>/g;
+        var parts = md.split(/(```[^]*?```|`[^`]*`)/);
+        return parts.map(function (part, i) {
+            if (i % 2 === 1) return part; // skip code spans/blocks
+            return part.replace(TAG_RE, function (match) {
+                return match
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+            });
+        }).join('');
+    }
+
     function run(md) {
-        return preprocessTildes(stripFrontmatter(md));
+        return escapeCustomElementTags(preprocessTildes(stripFrontmatter(md)));
     }
 
     // True if the markdown contains a currency-shaped token in prose. We look
@@ -109,6 +139,7 @@ var QDPreprocess = (function () {
         run: run,
         stripFrontmatter: stripFrontmatter,
         preprocessTildes: preprocessTildes,
+        escapeCustomElementTags: escapeCustomElementTags,
         hasCurrencyInProse: hasCurrencyInProse,
         computeMathDelimiters: computeMathDelimiters
     };
