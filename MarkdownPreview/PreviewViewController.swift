@@ -161,7 +161,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
         let mathRender = needsMath ? """
                 renderMathInElement(document.getElementById('content'), {
-                    delimiters: QDPreprocess.computeMathDelimiters(markdown),
+                    delimiters: __qdpre.computeMathDelimiters(markdown),
                     throwOnError: false
                 });
             """ : ""
@@ -195,8 +195,20 @@ class PreviewViewController: NSViewController, QLPreviewingController {
 
                 // Markdown preprocessing lives in
                 // MarkdownPreview/Resources/preprocess.js — single source of
-                // truth shared with the main app and the test harness.
-                const markdown = QDPreprocess.run(`\(escapedMarkdown)`);
+                // truth shared with the main app and the test harness. Fall
+                // back to a no-op shim if the bundle resource is missing so
+                // QuickLook still renders instead of throwing ReferenceError.
+                const __qdpre = typeof QDPreprocess !== 'undefined' ? QDPreprocess : {
+                    run: function (m) { return m; },
+                    computeMathDelimiters: function () {
+                        return [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '\\\\[', right: '\\\\]', display: true },
+                            { left: '\\\\(', right: '\\\\)', display: false }
+                        ];
+                    }
+                };
+                const markdown = __qdpre.run(`\(escapedMarkdown)`);
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)

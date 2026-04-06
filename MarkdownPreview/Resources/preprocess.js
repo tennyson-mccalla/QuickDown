@@ -98,6 +98,9 @@ var QDPreprocess = (function () {
             var re = /\$\d/g;
             var match;
             while ((match = re.exec(prose)) !== null) {
+                // Skip the second `$` of a `$$` display-math opener — that's
+                // not currency, it's the start of `$$...$$`.
+                if (match.index > 0 && prose.charAt(match.index - 1) === '$') continue;
                 var start = match.index + 1; // position of the digit
                 // Find the next `$` on the same paragraph (don't cross blank lines).
                 var paraEnd = prose.indexOf('\n\n', start);

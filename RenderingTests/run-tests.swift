@@ -226,6 +226,18 @@ let cases: [TestCase] = [
         return .pass
     },
 
+    TestCase(name: "bug #2 regression: display math `$$5x$$` is not flagged as currency") {
+        // The second `$` of a `$$` opener matches `$\d` but is not currency.
+        let probe = """
+        JSON.stringify(QDPreprocess.computeMathDelimiters('See $$5x + 3$$ for the formula.'))
+        """
+        let result = eval(probe)?.toString() ?? ""
+        if !(result.contains("\"left\":\"$\"") && result.contains("\"right\":\"$\"")) {
+            return .fail("display math `$$5x$$` was misclassified as currency\n      got: \(result)")
+        }
+        return .pass
+    },
+
     TestCase(name: "bug #3: hyphenated custom-element tag in prose is escaped") {
         let html = render("the tag is <local-jndi-name> rather than <indi-name>.")
         // Must NOT pass the bare tag through to the browser.

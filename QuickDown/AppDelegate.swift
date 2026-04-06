@@ -1465,7 +1465,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         let mathRender = needsMath ? """
                 renderMathInElement(document.getElementById('content'), {
-                    delimiters: QDPreprocess.computeMathDelimiters(markdown),
+                    delimiters: __qdpre.computeMathDelimiters(markdown),
                     throwOnError: false
                 });
             """ : ""
@@ -1501,8 +1501,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 // Markdown preprocessing (frontmatter strip + tilde escape +
                 // future fixes) lives in MarkdownPreview/Resources/preprocess.js
                 // and is also exercised by RenderingTests/run-tests.swift, so
-                // there is a single source of truth.
-                const markdown = QDPreprocess.run(`\(escapedMarkdown)`);
+                // there is a single source of truth. Fall back to a no-op
+                // shim if the bundle resource is missing so the page still
+                // renders instead of throwing ReferenceError.
+                const __qdpre = typeof QDPreprocess !== 'undefined' ? QDPreprocess : {
+                    run: function (m) { return m; },
+                    computeMathDelimiters: function () {
+                        return [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '\\\\[', right: '\\\\]', display: true },
+                            { left: '\\\\(', right: '\\\\)', display: false }
+                        ];
+                    }
+                };
+                const markdown = __qdpre.run(`\(escapedMarkdown)`);
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)
