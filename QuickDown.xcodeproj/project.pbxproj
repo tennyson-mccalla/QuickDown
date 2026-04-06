@@ -24,6 +24,8 @@
 		65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 43D2320AF1EABCEC69B3C66C /* highlight.min.js */; };
 		661CAAB90B7E7916DBFD44E6 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A6ADE9DAA38CD212EDFD586F /* Quartz.framework */; };
 		6F10C4502F7CD32D00C65B41 /* PillTabBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F10C44F2F7CD32D00C65B41 /* PillTabBarView.swift */; };
+		6F10C4522F84375300C65B41 /* preprocess.js in Resources */ = {isa = PBXBuildFile; fileRef = 6F10C4512F84375300C65B41 /* preprocess.js */; };
+		6F10C4532F84375300C65B41 /* preprocess.js in Resources */ = {isa = PBXBuildFile; fileRef = 6F10C4512F84375300C65B41 /* preprocess.js */; };
 		6F7A8B9C0D1E2F3A4B5C6D7E /* katex.min.css in Resources */ = {isa = PBXBuildFile; fileRef = 6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */; };
 		7A8B9C0D1E2F3A4B5C6D7E8F /* auto-render.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */; };
 		8C9D0E1F2A3B4C5D6E7F8A9B /* auto-render.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */; };
@@ -72,6 +74,7 @@
 		5277C86A48E697618FC7FB67 /* styles.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = styles.css; sourceTree = "<group>"; };
 		6E7F8A9B0C1D2E3F4A5B6C7D /* katex.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = katex.min.css; sourceTree = "<group>"; };
 		6F10C44F2F7CD32D00C65B41 /* PillTabBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillTabBarView.swift; sourceTree = "<group>"; };
+		6F10C4512F84375300C65B41 /* preprocess.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = preprocess.js; sourceTree = "<group>"; };
 		76EEAC00E8DF311B0B714DC3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7A9D560CAE541E7553AC9EE7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		8B9C0D1E2F3A4B5C6D7E8F9A /* auto-render.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "auto-render.min.js"; sourceTree = "<group>"; };
@@ -134,6 +137,7 @@
 		700E07D039451B6167F3EB9A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				6F10C4512F84375300C65B41 /* preprocess.js */,
 				43D2320AF1EABCEC69B3C66C /* highlight.min.js */,
 				FC7EC6A2FA563669168D545A /* marked.min.js */,
 				1F2E3D4C5B6A7980A1B2C3D4 /* mermaid.min.js */,
@@ -266,6 +270,7 @@
 				35B8762E58EA68A6DDA1F3C3 /* github.min.css in Resources */,
 				65D1DB2E9730FE26D3E62161 /* highlight.min.js in Resources */,
 				5EB936304DB630CA70016230 /* marked.min.js in Resources */,
+				6F10C4522F84375300C65B41 /* preprocess.js in Resources */,
 				0A1B2C3D4E5F6A7B8C9D0E1F /* mermaid.min.js in Resources */,
 				3A4B5C6D7E8F9A0B1C2D3E4F /* katex.min.js in Resources */,
 				5D6E7F8A9B0C1D2E3F4A5B6C /* katex.min.css in Resources */,
@@ -280,6 +285,7 @@
 			files = (
 				CC33DD44EE55FF66AA11BB22 /* PrivacyInfo.xcprivacy in Resources */,
 				ED01804B237879A9F323E414 /* github-dark.min.css in Resources */,
+				6F10C4532F84375300C65B41 /* preprocess.js in Resources */,
 				17367452B188627F1497D46A /* github.min.css in Resources */,
 				0268494772D952B21FFBC1DB /* highlight.min.js in Resources */,
 				1EA056943427206238FF6ACE /* marked.min.js in Resources */,

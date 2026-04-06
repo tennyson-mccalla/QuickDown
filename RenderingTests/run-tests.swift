@@ -175,6 +175,39 @@ let cases: [TestCase] = [
         return .pass
     },
 
+    TestCase(name: "bug #2 regression: math expression starting with a digit keeps single-$") {
+        // $0 = \nabla^2 P$ is math, not currency, and is common in math papers.
+        // The heuristic must look at what follows the digit before declaring
+        // currency. If TeX indicators (\\, ^, _, {, }, =) appear before the
+        // closing $, it's math.
+        let probe = """
+        typeof QDPreprocess.computeMathDelimiters === 'function'
+            ? JSON.stringify(QDPreprocess.computeMathDelimiters('Then $0 = \\\\nabla^2 P$ holds.'))
+            : 'NOT_IMPLEMENTED'
+        """
+        let result = eval(probe)?.toString() ?? ""
+        if !(result.contains("\"left\":\"$\"") && result.contains("\"right\":\"$\"")) {
+            return .fail("math expression `$0 = ...$` was misclassified as currency\n      got: \(result)")
+        }
+        return .pass
+    },
+
+    TestCase(name: "bug #2 regression: mixed doc with both currency and digit-leading math is currency") {
+        // If a doc has BOTH a currency token AND a digit-leading math
+        // expression, currency wins (single-$ must be disabled) — otherwise
+        // KaTeX would still mangle the currency.
+        let probe = """
+        typeof QDPreprocess.computeMathDelimiters === 'function'
+            ? JSON.stringify(QDPreprocess.computeMathDelimiters('Cost: $75 each. Also $0 = \\\\nabla^2 P$.'))
+            : 'NOT_IMPLEMENTED'
+        """
+        let result = eval(probe)?.toString() ?? ""
+        if result.contains("\"left\":\"$\"") && result.contains("\"right\":\"$\"") {
+            return .fail("mixed currency+math doc still has single-$ enabled\n      got: \(result)")
+        }
+        return .pass
+    },
+
     TestCase(name: "bug #2: pure-math doc keeps single-$ inline delimiter") {
         // Negative case: a doc with no currency-shaped tokens should still
         // get the single-$ delimiter so existing math users keep working.
