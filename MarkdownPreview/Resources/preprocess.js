@@ -12,6 +12,16 @@
 //                                             auto-render's `delimiters` option
 
 var QDPreprocess = (function () {
+    // Split markdown into alternating prose/code segments. Odd-indexed parts
+    // are fenced code blocks or inline code spans and must be left untouched
+    // by any preprocessor that operates on prose.
+    var CODE_SPLIT_RE = /(```[^]*?```|`[^`]*`)/;
+    function mapProse(md, fn) {
+        return md.split(CODE_SPLIT_RE).map(function (part, i) {
+            return i % 2 === 1 ? part : fn(part);
+        }).join('');
+    }
+
     function stripFrontmatter(md) {
         if (!md.startsWith('---\n') && !md.startsWith('---\r')) return md;
         var end = md.indexOf('\n---', 3);
@@ -23,15 +33,12 @@ var QDPreprocess = (function () {
     // standard GFM. Protect lone tildes outside code blocks/spans by
     // replacing with the HTML numeric entity.
     function preprocessTildes(md) {
-        var parts = md.split(/(```[^]*?```|`[^`]*`)/);
-        return parts.map(function (part, i) {
-            return i % 2 === 1
-                ? part
-                : part
-                    .replace(/~~/g, 'QDDBLTILDE')
-                    .replace(/~/g, '&#126;')
-                    .replace(/QDDBLTILDE/g, '~~');
-        }).join('');
+        return mapProse(md, function (part) {
+            return part
+                .replace(/~~/g, 'QDDBLTILDE')
+                .replace(/~/g, '&#126;')
+                .replace(/QDDBLTILDE/g, '~~');
+        });
     }
 
     // Escape angle-bracketed tokens whose tag name contains a hyphen — i.e.
@@ -52,16 +59,14 @@ var QDPreprocess = (function () {
     // tag-name region (`https`) contains no hyphen before the `:`.
     function escapeCustomElementTags(md) {
         var TAG_RE = /<\/?[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9-]*(?:\s[^>]*)?\/?>/g;
-        var parts = md.split(/(```[^]*?```|`[^`]*`)/);
-        return parts.map(function (part, i) {
-            if (i % 2 === 1) return part; // skip code spans/blocks
+        return mapProse(md, function (part) {
             return part.replace(TAG_RE, function (match) {
                 return match
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
             });
-        }).join('');
+        });
     }
 
     function run(md) {
@@ -86,7 +91,7 @@ var QDPreprocess = (function () {
     function hasCurrencyInProse(md) {
         var TEX_INDICATORS = /[\\^_{}=]/;
         var LOOKAHEAD = 60;
-        var parts = md.split(/(```[^]*?```|`[^`]*`)/);
+        var parts = md.split(CODE_SPLIT_RE);
         for (var i = 0; i < parts.length; i++) {
             if (i % 2 === 1) continue; // skip code spans/blocks
             var prose = parts[i];
