@@ -7,7 +7,16 @@ import WebKit
 /// Serves local files to WKWebView via a custom URL scheme, bypassing sandbox
 /// restrictions on WebKit's content process. The app process has security-scoped
 /// bookmark access; this handler bridges that access to WebKit.
+///
+/// Reads are confined to `allowedRoot` after symlink resolution. Without this,
+/// a maliciously crafted markdown document could resolve `<img>` / `<a>` URLs
+/// to arbitrary files via the `<base href>` tag and have the bytes loaded into
+/// the WebKit content process.
 class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
+    /// Set by AppDelegate before each render. Reads outside this subtree are
+    /// rejected. `nil` means deny everything.
+    var allowedRoot: URL?
+
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         guard let url = urlSchemeTask.request.url else {
             urlSchemeTask.didFailWithError(URLError(.badURL))
@@ -17,15 +26,29 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
         let filePath = url.path
         let fileURL = URL(fileURLWithPath: filePath)
 
-        guard FileManager.default.fileExists(atPath: filePath) else {
+        // Confine reads to the current document's directory subtree. Resolve
+        // symlinks on both sides so a symlink inside the root can't escape it.
+        guard let root = allowedRoot else {
+            urlSchemeTask.didFailWithError(URLError(.noPermissionsToReadFile))
+            return
+        }
+        let resolvedFile = fileURL.resolvingSymlinksInPath().standardizedFileURL
+        let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = resolvedRoot.path.hasSuffix("/") ? resolvedRoot.path : resolvedRoot.path + "/"
+        guard resolvedFile.path == resolvedRoot.path || resolvedFile.path.hasPrefix(rootPath) else {
+            urlSchemeTask.didFailWithError(URLError(.noPermissionsToReadFile))
+            return
+        }
+
+        guard FileManager.default.fileExists(atPath: resolvedFile.path) else {
             urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
 
         do {
-            let data = try Data(contentsOf: fileURL)
+            let data = try Data(contentsOf: resolvedFile)
             let mimeType: String
-            if let utType = UTType(filenameExtension: fileURL.pathExtension) {
+            if let utType = UTType(filenameExtension: resolvedFile.pathExtension) {
                 mimeType = utType.preferredMIMEType ?? "application/octet-stream"
             } else {
                 mimeType = "application/octet-stream"
@@ -73,6 +96,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
     var window: NSWindow!
     var webView: WKWebView?  // Lazily initialized when first file is opened
+    private var schemeHandler: LocalFileSchemeHandler?
     var dropZoneLabel: NSTextField!
     private var mainContentView: DropView!  // Container for lazy WebView
 
@@ -614,7 +638,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         guard webView == nil else { return }
 
         let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "quickdown-file")
+        let handler = LocalFileSchemeHandler()
+        schemeHandler = handler
+        config.setURLSchemeHandler(handler, forURLScheme: "quickdown-file")
         let wv = DroppableWebView(frame: mainContentView.bounds, configuration: config)
         wv.autoresizingMask = [.width, .height]
         wv.navigationDelegate = self
@@ -1355,7 +1381,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         """
     }
 
-    // Cache for loaded resources (static files that never change)
+    // Cache for loaded resources (static files that never change).
+    //
+    // WARNING: not thread-safe. All `loadResource` callers must run on the
+    // main thread. The current call graph (file-watcher uses `queue: .main`,
+    // menu actions, WKWebView completion handlers) satisfies this. Any future
+    // refactor that calls generateHTML/generateRawHTML off-main must add a
+    // lock here or annotate the call path `@MainActor`.
     private static var resourceCache: [String: String] = [:]
 
     private func loadResource(_ name: String, ext: String) -> String {
@@ -1395,12 +1427,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         }
 
         if content.isEmpty {
-            print("Warning: Could not load resource \(name).\(ext)")
-        } else {
-            // Cache for future use
-            AppDelegate.resourceCache[cacheKey] = content
+            // Cache the miss too — without this, every render (including every
+            // live-reload keystroke) re-walks the plug-ins and main bundles
+            // for a resource we already know is gone.
+            print("ERROR: Could not load resource \(name).\(ext) — bundle is missing it. Renders depending on this resource will fail.")
         }
-
+        AppDelegate.resourceCache[cacheKey] = content
         return content
     }
 
@@ -1411,9 +1443,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         if let baseDir = baseDirectoryURL {
             // Use custom scheme so WKURLSchemeHandler can serve local files,
             // bypassing WebKit's sandbox restrictions on file:// sub-resources.
-            let path = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
-            baseTag = "<base href=\"quickdown-file://localhost\(path)\">"
+            // Confine the scheme handler to this directory; reads outside the
+            // subtree are rejected so a malicious markdown file can't exfiltrate
+            // arbitrary files via `<img src="../../...">`.
+            schemeHandler?.allowedRoot = baseDir
+            let rawPath = baseDir.path.hasSuffix("/") ? baseDir.path : baseDir.path + "/"
+            // Percent-encode the path for the URL attribute. Without this, a
+            // directory containing `"`, `<`, `>`, or whitespace would break out
+            // of the attribute or corrupt the base URL.
+            let encodedPath = rawPath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? rawPath
+            baseTag = "<base href=\"quickdown-file://localhost\(encodedPath)\">"
         } else {
+            schemeHandler?.allowedRoot = nil
             baseTag = ""
         }
 
@@ -1421,19 +1462,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let needsMermaid = markdown.contains("```mermaid")
         let needsMath = markdown.contains("$") || markdown.contains("\\[") || markdown.contains("\\(")
 
-        // Always load core libraries
-        let markedJS = loadResource("marked.min", ext: "js")
-        let preprocessJS = loadResource("preprocess", ext: "js")
-        let highlightJS = loadResource("highlight.min", ext: "js")
+        // Always load core libraries. JS payloads are sanitized so a stray
+        // `</script>` in a vendored bundle can't terminate the inline tag.
+        let markedJS = sanitizeJSForInlineTag(loadResource("marked.min", ext: "js"))
+        let preprocessJS = sanitizeJSForInlineTag(loadResource("preprocess", ext: "js"))
+        let highlightJS = sanitizeJSForInlineTag(loadResource("highlight.min", ext: "js"))
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
 
         // Conditionally load heavy libraries
-        let mermaidJS = needsMermaid ? loadResource("mermaid.min", ext: "js") : ""
-        let katexJS = needsMath ? loadResource("katex.min", ext: "js") : ""
+        let mermaidJS = needsMermaid ? sanitizeJSForInlineTag(loadResource("mermaid.min", ext: "js")) : ""
+        let katexJS = needsMath ? sanitizeJSForInlineTag(loadResource("katex.min", ext: "js")) : ""
         let katexCSS = needsMath ? loadResource("katex.min", ext: "css") : ""
-        let autoRenderJS = needsMath ? loadResource("auto-render.min", ext: "js") : ""
+        let autoRenderJS = needsMath ? sanitizeJSForInlineTag(loadResource("auto-render.min", ext: "js")) : ""
 
         // Build conditional script/style blocks
         let mermaidStyle = needsMermaid ? """
@@ -1528,14 +1570,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                 \(mermaidPostProcess)
                 \(mathRender)
 
-                // Add IDs to headings for TOC navigation
-                document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function(heading) {
-                    var id = heading.textContent
-                        .toLowerCase()
-                        .replace(/\\s+/g, '-')
-                        .replace(/[^a-z0-9-]/g, '');
-                    heading.id = id;
-                });
+                // Add IDs to headings for TOC navigation. Falls back to
+                // section-N when the slug would be empty (e.g. CJK-only
+                // headings strip to ""), and disambiguates collisions with a
+                // -2/-3 suffix so duplicate headings get distinct anchors.
+                (function () {
+                    var seen = Object.create(null);
+                    var fallback = 0;
+                    document.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function(heading) {
+                        var slug = heading.textContent
+                            .toLowerCase()
+                            .replace(/\\s+/g, '-')
+                            .replace(/[^a-z0-9-]/g, '');
+                        if (!slug) { fallback += 1; slug = 'section-' + fallback; }
+                        var id = slug;
+                        var n = 1;
+                        while (seen[id]) { n += 1; id = slug + '-' + n; }
+                        seen[id] = true;
+                        heading.id = id;
+                    });
+                })();
 
                 // Make task list checkboxes interactive (visual toggle only)
                 document.querySelectorAll('input[type="checkbox"]').forEach(function(cb) {
@@ -1550,7 +1604,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func generateRawHTML(source: String) -> String {
-        let highlightJS = loadResource("highlight.min", ext: "js")
+        let highlightJS = sanitizeJSForInlineTag(loadResource("highlight.min", ext: "js"))
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
@@ -1587,6 +1641,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    /// Escape any literal `</` inside a JS payload that's about to be inlined
+    /// into an HTML `<script>` tag. If a vendored library ever contains the
+    /// substring `</script` (in a regex, comment, or template string) the HTML
+    /// parser would terminate the inline tag early and dump the rest into the
+    /// document body. The `\/` escape is a no-op for the JS engine (`\/` in JS
+    /// source is just `/`) but defeats the HTML parser's literal `</script>`
+    /// scan. Today's bundled libraries are clean; this guards against vendor
+    /// bumps. CSS gets no equivalent treatment because there is no safe escape
+    /// for `</style>` inside a CSS comment, and our vendored CSS is trusted.
+    private func sanitizeJSForInlineTag(_ js: String) -> String {
+        return js.replacingOccurrences(of: "</", with: "<\\/")
     }
 
     private func escapeForJavaScript(_ string: String) -> String {
