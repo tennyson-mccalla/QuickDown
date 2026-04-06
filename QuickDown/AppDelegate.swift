@@ -1423,6 +1423,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         // Always load core libraries
         let markedJS = loadResource("marked.min", ext: "js")
+        let preprocessJS = loadResource("preprocess", ext: "js")
         let highlightJS = loadResource("highlight.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
@@ -1464,12 +1465,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
 
         let mathRender = needsMath ? """
                 renderMathInElement(document.getElementById('content'), {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false},
-                        {left: '\\\\[', right: '\\\\]', display: true},
-                        {left: '\\\\(', right: '\\\\)', display: false}
-                    ],
+                    delimiters: QDPreprocess.computeMathDelimiters(markdown),
                     throwOnError: false
                 });
             """ : ""
@@ -1487,6 +1483,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             \(themeScript)
             \(mermaidStyle)
             <script>\(markedJS)</script>
+            <script>\(preprocessJS)</script>
             <script>\(highlightJS)</script>
             \(mermaidScript)
             \(katexScript)
@@ -1501,24 +1498,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
                     breaks: true
                 });
 
-                // Strip YAML frontmatter (--- delimited block at top of file)
-                const stripFrontmatter = (md) => {
-                    if (!md.startsWith('---\\n') && !md.startsWith('---\\r')) return md;
-                    const end = md.indexOf('\\n---', 3);
-                    if (end === -1) return md;
-                    return md.substring(end + 4).replace(/^\\r?\\n/, '');
-                };
-
-                // marked v15 treats ~single~ tildes as strikethrough, which is not standard GFM.
-                // Preprocess: protect lone tildes outside code blocks/spans by replacing with HTML entity.
-                const preprocessTildes = (md) => {
-                    const parts = md.split(/(```[^]*?```|`[^`]*`)/);
-                    return parts.map((part, i) => i % 2 === 1 ? part :
-                        part.replace(/~~/g, 'QDDBLTILDE').replace(/~/g, '&#126;').replace(/QDDBLTILDE/g, '~~')
-                    ).join('');
-                };
-
-                const markdown = preprocessTildes(stripFrontmatter(`\(escapedMarkdown)`));
+                // Markdown preprocessing (frontmatter strip + tilde escape +
+                // future fixes) lives in MarkdownPreview/Resources/preprocess.js
+                // and is also exercised by RenderingTests/run-tests.swift, so
+                // there is a single source of truth.
+                const markdown = QDPreprocess.run(`\(escapedMarkdown)`);
                 document.getElementById('content').innerHTML = marked.parse(markdown);
 
                 // Apply syntax highlighting (marked v5+ removed the highlight option)

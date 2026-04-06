@@ -25,7 +25,7 @@ let scriptURL = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath()
 let scriptDir = scriptURL.deletingLastPathComponent()
 let repoRoot = scriptDir.deletingLastPathComponent()
 let markedJSURL = repoRoot.appendingPathComponent("MarkdownPreview/Resources/marked.min.js")
-let preprocessJSURL = scriptDir.appendingPathComponent("preprocess.js")
+let preprocessJSURL = repoRoot.appendingPathComponent("MarkdownPreview/Resources/preprocess.js")
 
 func die(_ msg: String) -> Never {
     FileHandle.standardError.write(Data("ERROR: \(msg)\n".utf8))
