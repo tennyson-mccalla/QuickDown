@@ -154,6 +154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     // Tab bar (floating overlay)
     private var tabBarView: PillTabBarView!
     private var tabBarTrackingArea: NSTrackingArea?
+    private var appearanceObservation: NSKeyValueObservation?
 
     // Font size
     private let fontScaleKey = "FontScale"
@@ -189,6 +190,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         setupWindow()
         setupMenu()
         updateWindowBackground()  // Apply saved theme to window
+
+        // Redraw tab bar when system appearance changes (light↔dark) so the
+        // dynamic NSColor.windowBackgroundColor re-resolves in the new context.
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            guard let self = self, self.currentTheme == .system else { return }
+            self.tabBarView.needsDisplay = true
+        }
+
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
@@ -1462,20 +1471,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         let needsMermaid = markdown.contains("```mermaid")
         let needsMath = markdown.contains("$") || markdown.contains("\\[") || markdown.contains("\\(")
 
-        // Always load core libraries. JS payloads are sanitized so a stray
-        // `</script>` in a vendored bundle can't terminate the inline tag.
-        let markedJS = sanitizeJSForInlineTag(loadResource("marked.min", ext: "js"))
-        let preprocessJS = sanitizeJSForInlineTag(loadResource("preprocess", ext: "js"))
-        let highlightJS = sanitizeJSForInlineTag(loadResource("highlight.min", ext: "js"))
+        // Always load core libraries
+        let markedJS = loadResource("marked.min", ext: "js")
+        let preprocessJS = loadResource("preprocess", ext: "js")
+        let highlightJS = loadResource("highlight.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
 
         // Conditionally load heavy libraries
-        let mermaidJS = needsMermaid ? sanitizeJSForInlineTag(loadResource("mermaid.min", ext: "js")) : ""
-        let katexJS = needsMath ? sanitizeJSForInlineTag(loadResource("katex.min", ext: "js")) : ""
+        let mermaidJS = needsMermaid ? loadResource("mermaid.min", ext: "js") : ""
+        let katexJS = needsMath ? loadResource("katex.min", ext: "js") : ""
         let katexCSS = needsMath ? loadResource("katex.min", ext: "css") : ""
-        let autoRenderJS = needsMath ? sanitizeJSForInlineTag(loadResource("auto-render.min", ext: "js")) : ""
+        let autoRenderJS = needsMath ? loadResource("auto-render.min", ext: "js") : ""
 
         // Build conditional script/style blocks
         let mermaidStyle = needsMermaid ? """
@@ -1604,7 +1612,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
     }
 
     private func generateRawHTML(source: String) -> String {
-        let highlightJS = sanitizeJSForInlineTag(loadResource("highlight.min", ext: "js"))
+        let highlightJS = loadResource("highlight.min", ext: "js")
         let stylesCSS = loadResource("styles", ext: "css")
         let githubCSS = loadResource("github.min", ext: "css")
         let githubDarkCSS = loadResource("github-dark.min", ext: "css")
@@ -1641,19 +1649,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
-    }
-
-    /// Escape any literal `</` inside a JS payload that's about to be inlined
-    /// into an HTML `<script>` tag. If a vendored library ever contains the
-    /// substring `</script` (in a regex, comment, or template string) the HTML
-    /// parser would terminate the inline tag early and dump the rest into the
-    /// document body. The `\/` escape is a no-op for the JS engine (`\/` in JS
-    /// source is just `/`) but defeats the HTML parser's literal `</script>`
-    /// scan. Today's bundled libraries are clean; this guards against vendor
-    /// bumps. CSS gets no equivalent treatment because there is no safe escape
-    /// for `</style>` inside a CSS comment, and our vendored CSS is trusted.
-    private func sanitizeJSForInlineTag(_ js: String) -> String {
-        return js.replacingOccurrences(of: "</", with: "<\\/")
     }
 
     private func escapeForJavaScript(_ string: String) -> String {
@@ -1948,7 +1943,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
             wordCountLabel.textColor = .tertiaryLabelColor
             themeLabelColor = nil
             tocTableView.reloadData()
-            tabBarView.barBackgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.85)
+            tabBarView.barBackgroundColor = .windowBackgroundColor
+            tabBarView.barBackgroundAlpha = 0.85
             tabBarView.activeSegmentColor = .controlAccentColor
             tabBarView.textColor = .secondaryLabelColor
             tabBarView.activeTextColor = .white
@@ -1990,7 +1986,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSSear
         wordCountLabel.textColor = labelColor
         themeLabelColor = labelColor
         tocTableView.reloadData()
-        tabBarView.barBackgroundColor = backgroundColor.withAlphaComponent(0.85)
+        tabBarView.barBackgroundColor = backgroundColor
+        tabBarView.barBackgroundAlpha = 0.85
         tabBarView.activeSegmentColor = .controlAccentColor
         tabBarView.textColor = labelColor
         tabBarView.activeTextColor = .white
@@ -2414,6 +2411,10 @@ extension AppDelegate: WKNavigationDelegate {
         }
 
         decisionHandler(.allow)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        webView.reload()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

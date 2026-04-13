@@ -14,6 +14,9 @@ class PillTabBarView: NSView {
     var barBackgroundColor: NSColor = NSColor.windowBackgroundColor {
         didSet { needsDisplay = true }
     }
+    var barBackgroundAlpha: CGFloat = 1.0 {
+        didSet { needsDisplay = true }
+    }
     var activeSegmentColor: NSColor = NSColor.controlAccentColor {
         didSet { needsDisplay = true }
     }
@@ -106,7 +109,7 @@ class PillTabBarView: NSView {
         let barPath = NSBezierPath(roundedRect: barRect, xRadius: cornerRadius, yRadius: cornerRadius)
 
         // Background with subtle border
-        barBackgroundColor.setFill()
+        barBackgroundColor.withAlphaComponent(barBackgroundAlpha).setFill()
         barPath.fill()
 
         NSColor.separatorColor.withAlphaComponent(0.3).setStroke()
