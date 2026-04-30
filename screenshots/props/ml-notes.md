@@ -12,9 +12,7 @@ These notes cover the core update rule for gradient descent and the derivation o
 
 Given a differentiable loss function $L(\theta)$, gradient descent updates parameters by stepping against the gradient:
 
-$$
-\theta_{t+1} = \theta_t - \eta \, \nabla_\theta L(\theta_t)
-$$
+$$\theta_{t+1} = \theta_t - \eta \, \nabla_\theta L(\theta_t)$$
 
 where $\eta$ is the learning rate. The intuition: the gradient points toward the steepest *increase* in loss, so moving the opposite direction decreases loss locally.
 
@@ -22,9 +20,7 @@ where $\eta$ is the learning rate. The intuition: the gradient points toward the
 
 For a $K$-class problem with one-hot targets $y$ and predicted probabilities $\hat{y} = \text{softmax}(z)$, the cross-entropy loss is:
 
-$$
-L_{\text{CE}} = -\sum_{k=1}^{K} y_k \log \hat{y}_k
-$$
+$$L_{\text{CE}} = -\sum_{k=1}^{K} y_k \log \hat{y}_k$$
 
 Because $y$ is one-hot, only the term for the correct class survives, simplifying to $-\log \hat{y}_{k^\star}$ where $k^\star$ is the true class index.
 
@@ -32,9 +28,7 @@ Because $y$ is one-hot, only the term for the correct class survives, simplifyin
 
 The reason cross-entropy pairs so cleanly with softmax is that the gradient of the loss with respect to the pre-softmax logits collapses to:
 
-$$
-\frac{\partial L_{\text{CE}}}{\partial z_k} = \hat{y}_k - y_k
-$$
+$$\frac{\partial L_{\text{CE}}}{\partial z_k} = \hat{y}_k - y_k$$
 
 No Jacobian cancellation, no numerical gymnastics — the error signal is just "predicted minus target." This is what makes the backward pass through a softmax + cross-entropy layer fast and numerically stable.
 
