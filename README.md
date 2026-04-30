@@ -20,7 +20,7 @@
 ---
 
 <p align="center">
-  <img src="screenshots/dark-mode.png" width="600" alt="QuickDown - Dark Mode">
+  <img src="screenshots/hero-tabs.png" width="600" alt="QuickDown — tabs and dark theme">
 </p>
 
 ## Features
@@ -29,17 +29,19 @@
 Press **Space** on any markdown file in Finder for instant preview—no app launch needed.
 
 <p align="center">
-  <img src="screenshots/quicklook.png" width="500" alt="QuickLook Preview">
+  <img src="screenshots/quicklook-v060.png" width="500" alt="QuickLook Preview">
 </p>
 
 ### Standalone App
+- **Tabs** — Open multiple documents in a single window
 - **Live Reload** — Edits appear instantly as you save
+- **Raw Source View** — Toggle between rendered and source markdown
 - **Table of Contents** — Sidebar navigation for long documents (Cmd+Ctrl+S)
 - **Search** — Find text with Cmd+F
 - **Themes** — System, Light, Dark, or Sepia
 
 <p align="center">
-  <img src="screenshots/sepia-toc.png" width="600" alt="Table of Contents and Sepia Theme">
+  <img src="screenshots/dark-toc.png" width="600" alt="Table of Contents in Dark Theme">
 </p>
 
 ### Rich Markdown Support
